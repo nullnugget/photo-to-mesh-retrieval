@@ -196,6 +196,7 @@ dependencies:
       - fonttools==4.65.0
       - fsspec==2026.9.0
       - h11==0.16.0
+      - iniconfig==2.3.1
       - itsdangerous==2.2.0
       - jedi==0.19.2
       - joblib==1.6.0
@@ -210,12 +211,14 @@ dependencies:
       - opencv-python==5.0.0.93
       - pandas==2.3.3
       - parso==0.8.7
+      - pluggy==1.7.0
       - polars==1.44.2
       - polars-runtime-32==1.44.2
       - psutil==7.2.2
       - pygments==2.21.0
       - pymdown-extensions==11.0.2
       - pyparsing==3.3.2
+      - pytest==9.1.1
       - python-dateutil==2.9.0.post0
       - python-multipart==0.0.32
       - pytz==2026.3.post1
@@ -225,6 +228,7 @@ dependencies:
       - six==1.17.0
       - starlette==1.6.0
       - threadpoolctl==3.6.0
+      - tomli==2.5.0
       - tomlkit==0.15.1
       - tzdata==2026.4
       - ultralytics==8.4.156

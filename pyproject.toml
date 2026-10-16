@@ -1,0 +1,13 @@
+# Tool settings only. The project is not an installable package; scripts add the repository root to sys.path.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+markers = [
+    "gpu: needs a CUDA GPU (skipped if none is available)",
+    "data: needs the datasets in data/ (skipped if they are missing)",
+]
+filterwarnings = [
+    "ignore:xFormers is not available:UserWarning",
+]

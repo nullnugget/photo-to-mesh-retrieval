@@ -1,0 +1,41 @@
+2026-10-13 09:39:20,081 - --- Initializing Training Pipeline on cuda (FULL PRODUCTION MODE) ---
+2026-10-13 09:39:21,694 - Train Pairs: 8557 | Val Pairs: 1510
+2026-10-13 09:39:22,217 - Total Epochs: 30 | Train Steps/Epoch: 2139
+2026-10-13 09:39:22,217 - Starting Training Loop...
+
+2026-10-13 09:47:11,109 - Epoch 1/30 Complete | Train Loss: 0.1392 | Val Loss: 0.4142
+2026-10-13 09:47:11,303 - New best model saved! (Val Loss: 0.4142)
+2026-10-13 09:54:59,828 - Epoch 2/30 Complete | Train Loss: 0.0789 | Val Loss: 0.2706
+2026-10-13 09:55:00,077 - New best model saved! (Val Loss: 0.2706)
+2026-10-13 10:02:48,505 - Epoch 3/30 Complete | Train Loss: 0.0550 | Val Loss: 0.3654
+2026-10-13 10:10:37,066 - Epoch 4/30 Complete | Train Loss: 0.0617 | Val Loss: 0.2255
+2026-10-13 10:10:37,313 - New best model saved! (Val Loss: 0.2255)
+2026-10-13 10:18:25,890 - Epoch 5/30 Complete | Train Loss: 0.0528 | Val Loss: 0.2995
+2026-10-13 10:26:14,692 - Epoch 6/30 Complete | Train Loss: 0.0584 | Val Loss: 0.2610
+2026-10-13 10:34:03,220 - Epoch 7/30 Complete | Train Loss: 0.0583 | Val Loss: 0.2429
+2026-10-13 10:41:51,767 - Epoch 8/30 Complete | Train Loss: 0.0441 | Val Loss: 0.2428
+2026-10-13 10:49:40,326 - Epoch 9/30 Complete | Train Loss: 0.0493 | Val Loss: 0.2916
+2026-10-13 10:57:28,932 - Epoch 10/30 Complete | Train Loss: 0.0597 | Val Loss: 0.3727
+2026-10-13 11:05:17,708 - Epoch 11/30 Complete | Train Loss: 0.0723 | Val Loss: 0.3697
+2026-10-13 11:13:06,301 - Epoch 12/30 Complete | Train Loss: 0.0637 | Val Loss: 0.3563
+2026-10-13 11:20:55,063 - Epoch 13/30 Complete | Train Loss: 0.0609 | Val Loss: 0.2638
+2026-10-13 11:28:43,746 - Epoch 14/30 Complete | Train Loss: 0.0680 | Val Loss: 0.5298
+2026-10-13 13:46:32,230 - Epoch 15/30 Complete | Train Loss: 0.0765 | Val Loss: 0.2031
+2026-10-13 13:46:32,427 - New best model saved! (Val Loss: 0.2031)
+2026-10-13 13:54:25,465 - Epoch 16/30 Complete | Train Loss: 0.0641 | Val Loss: 0.2598
+2026-10-13 14:02:27,830 - Epoch 17/30 Complete | Train Loss: 0.0533 | Val Loss: 0.2453
+2026-10-13 14:10:31,744 - Epoch 18/30 Complete | Train Loss: 0.0599 | Val Loss: 0.3952
+2026-10-13 14:18:36,035 - Epoch 19/30 Complete | Train Loss: 0.0660 | Val Loss: 0.2938
+2026-10-13 14:26:42,529 - Epoch 20/30 Complete | Train Loss: 0.0496 | Val Loss: 0.2244
+2026-10-13 14:34:48,640 - Epoch 21/30 Complete | Train Loss: 0.0468 | Val Loss: 0.1572
+2026-10-13 14:34:48,910 - New best model saved! (Val Loss: 0.1572)
+2026-10-13 14:42:53,616 - Epoch 22/30 Complete | Train Loss: 0.0381 | Val Loss: 0.3242
+2026-10-13 14:50:57,381 - Epoch 23/30 Complete | Train Loss: 0.0498 | Val Loss: 0.2932
+2026-10-13 14:59:01,044 - Epoch 24/30 Complete | Train Loss: 0.0587 | Val Loss: 0.2767
+2026-10-13 15:07:04,666 - Epoch 25/30 Complete | Train Loss: 0.0425 | Val Loss: 0.1994
+2026-10-13 15:15:08,968 - Epoch 26/30 Complete | Train Loss: 0.0452 | Val Loss: 0.1758
+2026-10-13 15:23:12,918 - Epoch 27/30 Complete | Train Loss: 0.0391 | Val Loss: 0.1243
+2026-10-13 15:23:13,180 - New best model saved! (Val Loss: 0.1243)
+2026-10-13 15:31:17,186 - Epoch 28/30 Complete | Train Loss: 0.0430 | Val Loss: 0.2121
+2026-10-13 15:39:21,158 - Epoch 29/30 Complete | Train Loss: 0.0592 | Val Loss: 0.3711
+2026-10-13 15:47:25,588 - Epoch 30/30 Complete | Train Loss: 0.0748 | Val Loss: 0.1919

@@ -1,0 +1,16 @@
+{
+  "run_name": "v1_baseline",
+  "code": "git tag v1 (legacy/ after the restructure)",
+  "checkpoint": "legacy/weights/checkpoints/best_model.pth (epoch 27 of 30, selected by validation loss)",
+  "split": "pix3d image-level split, v1 validation set (seed 42, 85/15)",
+  "num_queries": 1510,
+  "gallery": "pix3d, 395 shapes",
+  "mask_source": "ground truth",
+  "metrics": {
+    "R@1": 25.03,
+    "R@5": 56.49,
+    "R@10": 70.33,
+    "category_accuracy@1": 77.35
+  },
+  "verified": "2026-10-16, re-run of legacy/src/indexing/evaluate.py after the restructure, identical values"
+}

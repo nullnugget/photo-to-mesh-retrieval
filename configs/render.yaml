@@ -1,0 +1,30 @@
+# Render settings (design guide 02, sections 10-11). The renderer writes a copy to data/derived/renders/render_config.yaml.
+render:
+  rig: rings25                       # rings25 (v2) or icosahedron12 (v1, kept for the ablation E9)
+  rings:                             # elevation above the horizontal plane through the shape centre
+    - {elevation_deg: -15, count: 8, azimuth_offset_deg: 0.0}
+    - {elevation_deg: 15, count: 8, azimuth_offset_deg: 22.5}
+    - {elevation_deg: 45, count: 8, azimuth_offset_deg: 0.0}
+  top: {elevation_deg: 85, count: 1}
+  fov_deg: 40                        # PROPOSED
+  distance_margin: 1.05              # camera distance = 1 / sin(fov / 2) * margin (unit-sphere shapes)
+  render_size: 512                   # rendered before the crop
+  output_size: 224                   # after crop, square padding, and resize
+  crop_margin: 0.0                   # same as the queries
+  background_rgb: [128, 128, 128]    # same as the queries
+  material:
+    albedo: 0.7                      # neutral grey for all shapes (PROPOSED value)
+    shininess: 10
+    use_textures: false              # decision D13; option T1 for a later test
+  lighting: L2                       # OPEN until the lighting test (experiment E3)
+  lighting_presets:                  # 02 section 11.6; the test sets render.lighting to each preset
+    L0: {type: point_at_camera, ambient: 0.5, diffuse: 0.3, specular: 0.2}
+    L1: {type: point_at_camera, ambient: 0.35, diffuse: 0.55, specular: 0.05}
+    L2: {type: directional_camera_relative, elevation_deg: 35, azimuth_deg: -35, ambient: 0.3, diffuse: 0.65, specular: 0.05}
+    L3:
+      type: key_and_fill
+      key: {elevation_deg: 35, azimuth_deg: -35, diffuse: 0.6}
+      fill: {elevation_deg: 10, azimuth_deg: 45, diffuse: 0.25}
+      ambient: 0.25
+      specular: 0.05
+    L4: {type: directional_world, direction: [0.0, -1.0, 0.0], ambient: 0.35, diffuse: 0.6, specular: 0.05}

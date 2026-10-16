@@ -1,0 +1,58 @@
+# Data settings (design guide 02, sections 6-8). Paths are relative to the repository root.
+data:
+  datasets: [pix3d]                  # Phase A: Pix3D only. Phase B adds abo (02 section 6.4).
+  image_size: 224                    # query and render size in pixels
+  background_rgb: [128, 128, 128]    # neutral grey for queries and renders (value PROPOSED, task T2.7)
+  crop_margin: 0.0                   # tight crop for queries and renders (PROPOSED, task T2.7)
+
+  splits:
+    seed: 42
+    image_level:                     # reproduces the v1 split; its test part is the v1 validation set
+      file: pix3d_image_split.json
+      v1_holdout_fraction: 0.15
+      val_fraction_of_train: 0.10
+    unseen_shapes:                   # split by shape, stratified by category
+      file: unseen_shapes.json
+      fractions: {train: 0.70, val: 0.10, test: 0.20}
+    leave_categories_out:            # PROPOSED (experiment E8)
+      file: leave_categories_out.json
+      held_out_phase_a: [bookcase, wardrobe]
+      held_out_phase_b: [lamp, planter, vase, ceiling_light]
+
+  abo:
+    max_models_per_class: null       # no cap (decision D33)
+    photos: original                 # original catalog photos, not the 256 px versions (decision D35)
+    download_workers: 16             # parallel connections that reuse their HTTPS connection
+    retries: 5
+    # Class rules (survey L-0013): the first matching rule gives the class.
+    # "leaf" is a regular expression on the last element of the Amazon category path (node[0].node_name).
+    class_rules:
+      - {product_type: CHAIR, class: chair}
+      - {product_type: SOFA, class: sofa}
+      - {product_type: TABLE, class: table}
+      - {product_type: DESK, class: desk}
+      - {product_type: BED, class: bed}
+      - {product_type: BED_FRAME, class: bed}
+      - {product_type: CABINET, class: cabinet}
+      - {product_type: SHELF, class: shelf}
+      - {product_type: DRESSER, class: dresser}
+      - {product_type: STOOL_SEATING, class: stool}
+      - {product_type: OTTOMAN, class: ottoman}
+      - {product_type: BENCH, class: bench}
+      - {product_type: BEAN_BAG_CHAIR, class: bean_bag}
+      - {product_type: HOME_FURNITURE_AND_DECOR, leaf: "Media Storage|Television Stands", class: tv_stand}
+      - {product_type: HOME_FURNITURE_AND_DECOR, leaf: "Bar & Serving Carts|Kitchen Islands", class: cart}
+      - {product_type: LAMP, class: lamp}
+      - {product_type: LIGHT_FIXTURE, class: ceiling_light}
+      - {product_type: PLANTER, class: planter}
+      - {product_type: VASE, class: vase}
+      - {product_type: ELECTRIC_FAN, class: fan}
+      - {product_type: SPORTING_GOODS, leaf: "Dumbbells", class: dumbbell}
+      - {product_type: CLOTHES_RACK, class: clothes_rack}
+      - {product_type: STORAGE_BOX, class: storage_box}
+      - {product_type: AIR_CONDITIONER, class: air_conditioner}
+      - {product_type: LADDER, class: ladder}
+      - {product_type: HOME, leaf: "Baskets, Bins", class: basket_bin}
+      - {product_type: HOME, leaf: "Space Heaters", class: space_heater}
+      - {product_type: CLOCK, class: clock}
+    # Mapping between ABO and Pix3D categories: OPEN (task T7.1, risk R7).

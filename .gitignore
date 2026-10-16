@@ -26,3 +26,6 @@ __pycache__/
 .vscode/
 .DS_Store
 
+
+# Third-party model code (cloned at pinned commits; see configs/backbone.yaml)
+/third_party/

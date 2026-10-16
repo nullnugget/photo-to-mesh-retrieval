@@ -1,0 +1,28 @@
+# Large data, weights, and generated outputs stay out of git.
+
+# Data: everything except the split files
+/data/*
+!/data/splits/
+
+# Weights and checkpoints (pretrained downloads + our checkpoints)
+/weights/
+
+# v1 data and weights after the restructure
+/legacy/data/
+/legacy/weights/
+
+# Images and files from the stand-alone module checks
+/test_outputs/
+/legacy/test_outputs/
+
+# Python, environments, notebook sessions
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+**/__marimo__/
+
+# Editor and OS
+.vscode/
+.DS_Store
+

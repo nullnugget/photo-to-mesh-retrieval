@@ -1,4 +1,4 @@
-"""Tests for src/config.py and src/paths.py (task T1.3)."""
+"""Tests for src/config.py and src/paths.py."""
 
 import argparse
 

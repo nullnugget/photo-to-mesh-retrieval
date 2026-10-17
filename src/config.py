@@ -9,6 +9,15 @@ The text of an override value is read as YAML, so `train.epochs=30` gives an int
 `data.datasets=[pix3d,abo]` gives a list, and `render.lighting=L2` gives a string.
 PyYAML reads `1e-3` as a string (YAML 1.1 needs a decimal point), so a value that
 looks like a number becomes a float.
+
+Typical use in a script:
+
+    parser = argparse.ArgumentParser()
+    add_config_args(parser)                 # adds --config and --set
+    cfg = config_from_args(parser.parse_args())
+    lr = get_value(cfg, "train.optimizer.lr")
+
+    $ python scripts/05_train.py --set train.epochs=5 --set render.lighting=L3
 """
 
 import argparse
@@ -20,8 +29,10 @@ import yaml
 
 from src.paths import CONFIGS_DIR, resolve
 
+# Settings files that every script loads, in this order (a later file overrides an earlier one).
 DEFAULT_FILES = ("data.yaml", "render.yaml", "backbone.yaml", "train.yaml")
 
+# Marker for "no default given" in get_value. A unique object, because None can be a real setting value.
 _MISSING = object()
 
 
@@ -29,9 +40,10 @@ def load_yaml(path: str | Path) -> dict:
     """Read one YAML file. A relative name is looked up in `configs/` first, then at the repository root."""
     path = Path(path)
     if not path.is_absolute():
+        # "train.yaml" means configs/train.yaml; "runs/x/config.yaml" means a path from the repository root.
         path = CONFIGS_DIR / path if (CONFIGS_DIR / path).exists() else resolve(path)
     with open(path) as f:
-        data = yaml.safe_load(f) or {}
+        data = yaml.safe_load(f) or {}  # an empty file gives None; treat it as an empty mapping
     if not isinstance(data, dict):
         raise ValueError(f"{path}: the top level must be a mapping, got {type(data).__name__}")
     return data
@@ -39,9 +51,10 @@ def load_yaml(path: str | Path) -> dict:
 
 def deep_merge(base: dict, override: dict) -> dict:
     """Return a new dict: `override` merged into `base`. Nested dicts merge; other values replace."""
-    merged = copy.deepcopy(base)
+    merged = copy.deepcopy(base)  # deep copy, so that the inputs never change
     for key, value in override.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            # Both sides are sections: merge them key by key, so unchanged keys in "base" stay.
             merged[key] = deep_merge(merged[key], value)
         else:
             merged[key] = copy.deepcopy(value)
@@ -75,6 +88,7 @@ def parse_value(text: str) -> Any:
     """Read the text of an override value as YAML; a text that looks like a number becomes a float."""
     value = yaml.safe_load(text)
     if isinstance(value, str):
+        # PyYAML gives a string for "1e-3"; try to read such a string as a number.
         try:
             return float(value)
         except ValueError:

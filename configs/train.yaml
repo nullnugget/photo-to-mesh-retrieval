@@ -1,28 +1,29 @@
-# Training settings (design guide 02, sections 13-16). Start values, PROPOSED; tuned on the validation set (task T5.10).
+# Training settings for the three embedding heads (query projector, view projector, view aggregator).
+# These are start values; they are tuned on the validation set.
 train:
-  seed: 42
-  batch_size: 64                     # queries per step; the loss uses all gallery shapes as negatives
+  seed: 42                           # fixed seed, so that a run can be repeated
+  batch_size: 64                     # query images per step; every gallery shape is a negative in each step
   epochs: 30
   optimizer: {name: adamw, lr: 1.0e-3, weight_decay: 1.0e-4}
-  schedule: {name: cosine, warmup_epochs: 1}
-  heads:                             # embedding heads: QueryProjector, ViewProjector, ViewAggregator
-    embedding_dim: 256
-    hidden_dim: 512
-    aggregator: attention            # attention or mean (ablation E9)
-    view_dropout_min_views: 12       # random subset of 12-25 views for the aggregator during training
+  schedule: {name: cosine, warmup_epochs: 1}   # learning rate rises for 1 epoch, then falls along a cosine curve
+  heads:
+    embedding_dim: 256               # length of every embedding (query, view, and shape)
+    hidden_dim: 512                  # width of the hidden layer in each projector
+    aggregator: attention            # how 25 view embeddings become 1 shape embedding: attention or mean
+    view_dropout_min_views: 12       # during training, the aggregator sees a random 12 to 25 views
   loss:
-    temperature: 0.1
-    category_weight: 0.3             # lambda in L = L_inst + lambda * L_cat
+    temperature: 0.1                 # divides the scores before the softmax; smaller = sharper probabilities
+    category_weight: 0.3             # weight of the category loss in: loss = instance loss + weight * category loss
   scoring:
-    alpha: 0.5                       # combined score = alpha * view score + (1 - alpha) * shape score
-    view_max: hard                   # hard or soft (log-sum-exp) maximum over views
-  augment:
+    alpha: 0.5                       # score = alpha * best-view score + (1 - alpha) * shape score
+    view_max: hard                   # best-view score: hard = plain maximum; soft = log-sum-exp (smooth maximum)
+  augment:                           # random changes to training query images
     color_jitter: {brightness: 0.4, contrast: 0.4, saturation: 0.4, hue: 0.1}
-    grayscale_p: 0.4
-    rotation_deg: 10
-    zoom_out_min: 0.85
-    erasing_p: 0.25
-    mask_noise: true
-    hflip_p: 0.0                     # only as a test (asymmetric shapes)
-  select_by: val_r1                  # checkpoint selection (decision D19)
-  mini_fraction: 0.05                # data fraction for --mini runs
+    grayscale_p: 0.4                 # probability to make an image grey, so that the model relies on form
+    rotation_deg: 10                 # maximum in-plane rotation
+    zoom_out_min: 0.85               # the object can shrink to 85 % of the frame
+    erasing_p: 0.25                  # probability to cover a small rectangle (imitates occlusion)
+    mask_noise: true                 # small random changes to the mask edge (imitates imperfect masks)
+    hflip_p: 0.0                     # horizontal flip; off, because some shapes are not mirror-symmetric
+  select_by: val_r1                  # keep the checkpoint with the best validation recall@1
+  mini_fraction: 0.05                # fraction of the data used by quick --mini runs

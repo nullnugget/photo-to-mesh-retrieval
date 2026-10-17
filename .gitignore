@@ -1,4 +1,4 @@
-# Large data, weights, and generated outputs stay out of git.
+# Large data, weights, generated outputs, and local-only folders stay out of git.
 
 # Data: everything except the split files
 /data/*
@@ -7,7 +7,7 @@
 # Weights and checkpoints (pretrained downloads + our checkpoints)
 /weights/
 
-# v1 data and weights after the restructure
+# v1 data and weights (kept inside legacy/, not in git)
 /legacy/data/
 /legacy/weights/
 
@@ -27,5 +27,5 @@ __pycache__/
 .DS_Store
 
 
-# Third-party model code (cloned at pinned commits; see configs/backbone.yaml)
+# Third-party model code, cloned at the commits listed in configs/backbone.yaml
 /third_party/

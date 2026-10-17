@@ -1,4 +1,4 @@
-"""Tests for src/runs.py (task T1.4). All files go into pytest's temporary folder."""
+"""Tests for src/runs.py. All files go into pytest's temporary folder."""
 
 import datetime
 

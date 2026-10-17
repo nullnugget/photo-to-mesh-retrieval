@@ -1,31 +1,33 @@
-# Data settings (design guide 02, sections 6-8). Paths are relative to the repository root.
+# Data settings: which datasets to use, how query images are prepared, and how the data is split.
+# Paths are relative to the repository root.
 data:
-  datasets: [pix3d]                  # Phase A: Pix3D only. Phase B adds abo (02 section 6.4).
-  image_size: 224                    # query and render size in pixels
-  background_rgb: [128, 128, 128]    # neutral grey for queries and renders (value PROPOSED, task T2.7)
-  crop_margin: 0.0                   # tight crop for queries and renders (PROPOSED, task T2.7)
+  datasets: [pix3d]                  # datasets to use; add "abo" to train on Pix3D and ABO together
+  image_size: 224                    # side length (pixels) of every query image and every render
+  background_rgb: [128, 128, 128]    # neutral grey that replaces the background of queries and renders
+  crop_margin: 0.0                   # extra border around the object before the square crop (0.0 = tight crop)
 
   splits:
-    seed: 42
-    image_level:                     # reproduces the v1 split; its test part is the v1 validation set
+    seed: 42                         # fixed seed, so that every split is repeatable
+    image_level:                     # photos split at random; the same shapes appear in training and test
       file: pix3d_image_split.json
-      v1_holdout_fraction: 0.15
-      val_fraction_of_train: 0.10
-    unseen_shapes:                   # split by shape, stratified by category
+      v1_holdout_fraction: 0.15      # the test part is the same 15 % of photos that v1 used for validation
+      val_fraction_of_train: 0.10    # part of the training photos kept apart to select checkpoints
+    unseen_shapes:                   # shapes split, so test shapes have no training photos
       file: unseen_shapes.json
       fractions: {train: 0.70, val: 0.10, test: 0.20}
-    leave_categories_out:            # PROPOSED (experiment E8)
+    leave_categories_out:            # whole categories kept out of training
       file: leave_categories_out.json
-      held_out_phase_a: [bookcase, wardrobe]
-      held_out_phase_b: [lamp, planter, vase, ceiling_light]
+      held_out_pix3d: [bookcase, wardrobe]
+      held_out_abo: [lamp, planter, vase, ceiling_light]
 
   abo:
-    max_models_per_class: null       # no cap (decision D33)
-    photos: original                 # original catalog photos, not the 256 px versions (decision D35)
-    download_workers: 16             # parallel connections that reuse their HTTPS connection
-    retries: 5
-    # Class rules (survey L-0013): the first matching rule gives the class.
-    # "leaf" is a regular expression on the last element of the Amazon category path (node[0].node_name).
+    max_models_per_class: null       # null = use every model of each class
+    photos: original                 # "original" = full-resolution catalog photos; "small" = 256-pixel versions
+    download_workers: 16             # parallel downloads; each worker reuses its HTTPS connection
+    retries: 5                       # attempts for each file before it is reported as failed
+    # Class rules: they turn an ABO product type into one of our classes. The first matching rule wins.
+    # "leaf" is a regular expression that must match the last part of the Amazon category path
+    # (field node[0].node_name), for product types that mix several kinds of objects.
     class_rules:
       - {product_type: CHAIR, class: chair}
       - {product_type: SOFA, class: sofa}
@@ -55,4 +57,3 @@ data:
       - {product_type: HOME, leaf: "Baskets, Bins", class: basket_bin}
       - {product_type: HOME, leaf: "Space Heaters", class: space_heater}
       - {product_type: CLOCK, class: clock}
-    # Mapping between ABO and Pix3D categories: OPEN (task T7.1, risk R7).

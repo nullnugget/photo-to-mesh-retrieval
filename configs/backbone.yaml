@@ -1,15 +1,22 @@
-# Frozen backbone for feature extraction (design guide 02, section 12). Paths are relative to the repository root.
-# The code is loaded from the builder functions in <repo>/<package>/hub/backbones.py, not from hubconf.py (decision D36).
+# Backbone settings: the frozen, pretrained network that turns each image into a feature vector.
+# Paths are relative to the repository root.
 backbone:
-  name: dinov3_vitb16                # main backbone (decision D07); experiment E2 compares the others
-  feature_recipe: cls                # OPEN: cls, masked_mean, or cls_masked_mean (experiment E2)
-  precision: fp16                    # fp16 matches fp32 (L-0016)
-  batch_size: 64
-  image_size: 224
-  normalize:
+  name: dinov3_vitb16                # active backbone; must be one of the entries under "available"
+  feature_recipe: cls                # how one feature vector is made from the backbone output:
+                                     #   cls             = the class token (a summary of the whole image)
+                                     #   masked_mean     = the mean of the patch tokens that lie on the object
+                                     #   cls_masked_mean = both, joined
+  precision: fp16                    # fp16 gives the same features as fp32 at half the memory
+  batch_size: 64                     # images processed together during feature extraction
+  image_size: 224                    # input side length in pixels
+  normalize:                         # ImageNet colour normalization, which the backbones expect
     mean: [0.485, 0.456, 0.406]
     std: [0.229, 0.224, 0.225]
-  available:
+  available:                         # every backbone that the code can load
+    # repo:       local copy of the model code (cloned from GitHub at "commit")
+    # weights:    local weights file
+    # dim:        length of the feature vector
+    # patch_size: side length (pixels) of one image patch
     dinov3_vits16:
       repo: third_party/dinov3
       commit: 6876159a11b4df116f30f667f8c9888617df0751

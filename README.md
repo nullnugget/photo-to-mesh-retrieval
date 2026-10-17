@@ -35,7 +35,7 @@ envs/        conda environment export
    conda env create -f envs/xdim-env.yml
    conda activate xdim-env
    ```
-2. Download Pix3D and extract it to `data/raw/pix3d/`. The folder must contain `pix3d.json`, `img/`, `mask/`, and `model/`.
+2. Download Pix3D and extract it to `data/raw/pix3d/`. The folder must contain `pix3d.json`, `img/`, `mask/`, and `model/`. ABO is downloaded by `scripts/01_download_abo.py` (see "Run v2").
 3. v2 backbone weights: request access to DINOv3 from Meta and place the weights files in `weights/dinov3/`. The DINOv2 comparison weights go in `weights/dinov2/`. The file names are listed in `configs/backbone.yaml`.
    The model code is not stored in this repository: `torch.hub.load` downloads it from GitHub, at the commit pinned in `configs/backbone.yaml`, on the first use (into `~/.cache/torch/hub/`). Only code is downloaded; the weights always come from the local files.
 4. v1 weights: see "Run v1" below.
@@ -60,11 +60,12 @@ Each pipeline step in `scripts/` is a marimo file with two ways to run it, from 
 
 | Step | Script | Status |
 |---|---|---|
+| ABO metadata, mesh geometry, and photos | `scripts/01_download_abo.py` | available |
 | Query images, catalog, and splits | `scripts/03_make_queries.py --dataset pix3d` | available |
 | Other steps | n/a | to be written |
 
 ## Data and model credits
 
 - **Pix3D:** Sun et al., "Pix3D: Dataset and Methods for Single-Image 3D Shape Modeling", CVPR 2018.
-- **Amazon Berkeley Objects (ABO), planned for v2:** Collins et al., CVPR 2022. Data © Amazon.com, licensed under CC BY 4.0.
+- **Amazon Berkeley Objects (ABO):** Collins et al., CVPR 2022. Data © Amazon.com, licensed under CC BY 4.0.
 - **DINOv3, planned for v2:** Meta AI, DINOv3 License. The weights are not distributed with this repository.

@@ -21,6 +21,7 @@ ABO_DIR = RAW_DIR / "abo"
 ABO_METADATA_DIR = ABO_DIR / "metadata"
 ABO_IMAGES_DIR = ABO_DIR / "images"
 ABO_MESHES_DIR = ABO_DIR / "meshes"
+ABO_MANIFEST_DIR = ABO_DIR / "manifest"  # the selected meshes and photos, and the download results
 
 # Derived data (everything that v2 generates from the raw data)
 DERIVED_DIR = DATA_DIR / "derived"

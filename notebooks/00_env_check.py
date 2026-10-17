@@ -45,17 +45,17 @@ def _(mo):
 
     The next cell imports every library that the notebook uses and defines the settings:
 
-    - the folders of the model code (`third_party/`), the weights (`weights/`), and the test images;
+    - the folders of the weights (`weights/`) and of the test images;
     - the ImageNet colour normalization, which all these backbones expect;
-    - the list of backbones to check. Each entry gives the name of the builder function, the folder
-      of its code, and its weights file.
+    - the list of backbones to check. It comes from `configs/backbone.yaml`, so that the pinned code
+      versions and the weights files are defined in one place. Each entry gives the name of the
+      builder function, the source of its code for `torch.hub.load`, and its weights file.
     """)
     return
 
 
 @app.cell
 def _():
-    import importlib
     import json
     import platform
     import sys
@@ -70,8 +70,9 @@ def _():
 
     # Folders. The notebook is in <repository>/notebooks/, so the repository root is one level up.
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
-    THIRD_PARTY = PROJECT_ROOT / "third_party"  # model code of DINOv3 and DINOv2
-    WEIGHTS = PROJECT_ROOT / "weights"  # pretrained weights files
+    sys.path.insert(0, str(PROJECT_ROOT))  # makes the project package "src" importable
+    from src.config import load_config  # noqa: E402 (needs the path line above)
+
     LEGACY_DATA = PROJECT_ROOT / "legacy" / "data"  # v1 images, used as test inputs (see section 4)
     PIX3D_JSON = PROJECT_ROOT / "data" / "raw" / "pix3d" / "pix3d.json"  # Pix3D annotations
 
@@ -82,12 +83,11 @@ def _():
     # Use the GPU when one is available.
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Backbones to check: (name of the builder function, folder of the model code, weights file).
+    # Backbones to check, from configs/backbone.yaml:
+    # (name of the builder function, torch.hub source "<owner>/<repo>:<commit>", weights file).
     BACKBONES = [
-        ("dinov3_vits16", THIRD_PARTY / "dinov3", WEIGHTS / "dinov3" / "dinov3_vits16_pretrain_lvd1689m-08c60483.pth"),
-        ("dinov3_vitb16", THIRD_PARTY / "dinov3", WEIGHTS / "dinov3" / "dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"),
-        ("dinov3_vitl16", THIRD_PARTY / "dinov3", WEIGHTS / "dinov3" / "dinov3_vitl16_pretrain_lvd1689m-8aa4cbdd.pth"),
-        ("dinov2_vitb14_reg", THIRD_PARTY / "dinov2", WEIGHTS / "dinov2" / "dinov2_vitb14_reg4_pretrain.pth"),
+        (name, entry["hub"], PROJECT_ROOT / entry["weights"])
+        for name, entry in load_config(["backbone.yaml"])["backbone"]["available"].items()
     ]
     return (
         BACKBONES,
@@ -98,7 +98,6 @@ def _():
         LEGACY_DATA,
         PIX3D_JSON,
         TF,
-        importlib,
         json,
         platform,
         sys,
@@ -147,16 +146,18 @@ def _(mo):
 
     The next cell defines four functions.
 
-    **`load_backbone`** builds a backbone from its local code and loads its local weights.
+    **`load_backbone`** builds a backbone with `torch.hub.load` and loads its local weights.
 
-    - It imports the builder function directly from `<code folder>/<package>/hub/backbones.py`.
-      The usual entry point, `torch.hub.load`, reads the file `hubconf.py`. In DINOv3, `hubconf.py`
-      also imports Meta's evaluation tools, and these need the extra package `torchmetrics`.
-      The direct import needs only PyTorch.
-    - It builds the model without weights (`pretrained=False`), then reads the weights file with
-      `torch.load`. If the builder gets the file path itself, it hands the path to PyTorch's
-      download function, which copies the file into the cache folder `~/.cache/torch/hub/`. That
-      copy is a waste of disk space.
+    - `torch.hub.load("<owner>/<repo>:<commit>", name)` downloads the model **code** of that exact
+      commit from GitHub, once, into `~/.cache/torch/hub/`, and reuses it after that. The download
+      contains no weights. It reads the repository file `hubconf.py`, which lists the models that
+      the repository offers, and calls the builder function `name`.
+    - DINOv3's `hubconf.py` also imports Meta's evaluation tools, which need the package
+      `torchmetrics`. This package is installed in the environment. Importing that code does not
+      create any model and does not download any weights.
+    - The builder gets `pretrained=False`, so it does not download weights. The notebook then reads
+      the local weights file with `torch.load`. Thus the only weights on disk are the files in
+      `weights/`.
 
     **`load_image`** reads an image, resizes it to 224 × 224 pixels, and applies the ImageNet
     normalization.
@@ -181,26 +182,23 @@ def _(
     IMAGENET_MEAN,
     IMAGENET_STD,
     TF,
-    importlib,
-    sys,
     time,
     torch,
     tvio,
 ):
-    def load_backbone(name, code_dir, weights_file):
-        """Build the backbone `name` from the code in `code_dir`, and load the weights in `weights_file`.
+    def load_backbone(name, hub_source, weights_file):
+        """Build the backbone `name` with torch.hub, and load the local weights in `weights_file`.
 
-        The builder function is imported directly from `<code_dir>/<package>/hub/backbones.py`,
-        so that `hubconf.py` (and its extra dependencies) is not needed. The weights are read
-        with `torch.load`, so that no copy goes into the torch hub cache.
+        Args:
+            name: Name of the builder function, for example "dinov3_vitb16".
+            hub_source: Source of the code, "<github owner>/<repo>:<commit>".
+            weights_file: Local weights file.
         """
-        # Make the package (for example "dinov3") importable from its local code folder.
-        if str(code_dir) not in sys.path:
-            sys.path.insert(0, str(code_dir))
-        # The package has the same name as its code folder: third_party/dinov3 -> package "dinov3".
-        builder = getattr(importlib.import_module(f"{code_dir.name}.hub.backbones"), name)
-        # Build the network with random weights, then load the pretrained weights.
-        model = builder(pretrained=False)
+        # Build the network with random weights. The code comes from the torch hub cache (downloaded
+        # on the first call). pretrained=False: the builder downloads no weights.
+        # trust_repo=True: accept this repository without an interactive question.
+        model = torch.hub.load(hub_source, name, pretrained=False, trust_repo=True)
+        # Load the pretrained weights from the local file.
         state_dict = torch.load(weights_file, map_location="cpu", weights_only=True)
         model.load_state_dict(state_dict, strict=True)  # strict: every weight must match exactly
         return model.eval()  # evaluation mode: no dropout or other training behaviour
@@ -235,7 +233,7 @@ def _(
         extra = out.get("x_storage_tokens", out.get("x_norm_regtokens"))
         return class_token, patch_tokens, (extra.float() if extra is not None else None)
 
-    def check_backbone(name, code_dir, weights_file, query, own_views, other_views):
+    def check_backbone(name, hub_source, weights_file, query, own_views, other_views):
         """Run all checks for one backbone. Return one dict of results (see section 5)."""
         result = {"backbone": name}
         try:
@@ -245,7 +243,7 @@ def _(
 
             # 1. Load the model and count its parameters.
             start = time.perf_counter()
-            model = load_backbone(name, code_dir, weights_file).to(DEVICE)
+            model = load_backbone(name, hub_source, weights_file).to(DEVICE)
             result["load_seconds"] = round(time.perf_counter() - start, 2)
             result["params_millions"] = round(sum(p.numel() for p in model.parameters()) / 1e6, 1)
 
@@ -365,8 +363,8 @@ def _(mo):
 @app.cell
 def _(BACKBONES, check_backbone, other_views, own_views, query):
     results = []
-    for _name, _code_dir, _weights_file in BACKBONES:
-        _row = check_backbone(_name, _code_dir, _weights_file, query, own_views, other_views)
+    for _name, _hub_source, _weights_file in BACKBONES:
+        _row = check_backbone(_name, _hub_source, _weights_file, query, own_views, other_views)
         print("RESULT", _row)  # printed, so that a script run also shows each row
         results.append(_row)
     return (results,)

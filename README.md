@@ -35,7 +35,9 @@ envs/        conda environment export
    conda activate xdim-env
    ```
 2. Download Pix3D and extract it to `data/raw/pix3d/`. The folder must contain `pix3d.json`, `img/`, `mask/`, and `model/`.
-3. Weights: see the setup of each version below.
+3. v2 backbone weights: request access to DINOv3 from Meta and place the weights files in `weights/dinov3/`. The DINOv2 comparison weights go in `weights/dinov2/`. The file names are listed in `configs/backbone.yaml`.
+   The model code is not stored in this repository: `torch.hub.load` downloads it from GitHub, at the commit pinned in `configs/backbone.yaml`, on the first use (into `~/.cache/torch/hub/`). Only code is downloaded; the weights always come from the local files.
+4. v1 weights: see "Run v1" below.
 
 ## Run v1 (baseline)
 

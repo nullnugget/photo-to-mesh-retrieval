@@ -87,7 +87,9 @@ def test_backbone_settings_point_to_known_entries():
     bb = load_config()["backbone"]
     assert bb["name"] in bb["available"]
     for entry in bb["available"].values():
-        assert set(entry) >= {"repo", "commit", "weights", "dim", "patch_size"}
+        assert set(entry) >= {"hub", "weights", "dim", "patch_size"}
+        owner_repo, commit = entry["hub"].split(":")
+        assert owner_repo.startswith("facebookresearch/") and len(commit) == 40  # pinned to a full commit hash
 
 
 def test_paths_are_absolute_and_inside_the_repository():

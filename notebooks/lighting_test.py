@@ -22,13 +22,15 @@ def _(mo):
 
     **Method** (no training needed):
 
-    1. Take a small sample of Pix3D meshes: 3 per category, 27 in total.
-    2. Render each mesh from all 25 cameras with each light setup L0 to L4 (`configs/render.yaml`).
-    3. Turn every render and every query photo of these meshes into a DINOv3 feature vector.
-    4. For each light setup, search the 27 meshes with every query photo and measure how often the
+    1. Render every Pix3D mesh (395) from all 25 cameras with each light setup L0 to L4
+       (`configs/render.yaml`), and turn each render straight into a DINOv3 feature vector. Only the
+       features are kept (about 15 MB per setup), not the images.
+    2. Turn every query photo into a feature vector in the same way.
+    3. For each light setup, search all 395 meshes with every query photo and measure how often the
        correct mesh comes first (R@1). The frozen backbone already places photos and renders in one
        feature space, so this "zero-shot" search works before any training.
-    5. Compare the light setups with confidence intervals, and look at the renders by eye.
+    4. Compare the light setups with confidence intervals, and look at the renders of a small
+       sample of meshes (3 per category, saved as images) by eye.
 
     | Setup | Light |
     |:---|:---|
@@ -38,24 +40,28 @@ def _(mo):
     | L3 | L2 plus a weaker fill light from the right |
     | L4 | One fixed light from straight above, like a ceiling light |
 
-    **Queries:** the train and val photos of the sample meshes (no training happens here, so
-    train photos are not "seen"). The test photos stay out, so that the choice of the light does
-    not use the test set.
+    **Queries:** all train and val photos of Pix3D (8,557; no training happens here, so train
+    photos are not "seen"). The test photos stay out, so that the choice of the light does not use
+    the test set.
 
-    **Limits:** the gallery has only 27 meshes, so the task is easier than the real one (R@10 is
-    close to 100 % for every setup; R@1 and Cat@1 carry the comparison). The ranking is for the
-    frozen backbone; after training the heads, it could change, so a short training run checks
-    the best one or two setups later.
+    **Why the full gallery:** a first run with a gallery of only 27 meshes could not separate the
+    setups (R@5 was about 99.5 % for all of them; each photo competed with only 2 meshes of its own
+    category). With all 395 meshes, each photo competes with every look-alike mesh, as in real use.
+
+    **Limit:** the ranking is for the frozen backbone; after training the heads, it could change,
+    so a short training run checks the best one or two setups later.
 
     **Outputs:**
 
-    - renders: `data/derived/renders_lighting_test/<setup>/<mesh id>/view_00.png` ... `view_24.png`
-      (temporary; deleted after the decision);
+    - sample renders: `data/derived/renders_lighting_test/<setup>/<mesh id>/view_00.png` ... `view_24.png`;
+    - gallery features: `data/derived/renders_lighting_test/gallery_features_<setup>.npz`
+      (both temporary; deleted after the decision);
     - results: `runs/<date>_pix3d_<backbone>_lighting_test/` (settings, metrics, contact sheets),
       written by the last section.
 
-    **How to run:** `marimo edit notebooks/lighting_test.py`, then press the buttons in sections 3
-    and 9. As a script (`python notebooks/lighting_test.py`), all steps run and the results are saved.
+    **How to run:** `marimo edit notebooks/lighting_test.py`, then press the buttons in sections 3,
+    7, and 10. As a script (`python notebooks/lighting_test.py`), all steps run and the results are
+    saved. The gallery features take about 25 minutes the first time; later runs load them.
     """)
     return
 
@@ -69,10 +75,11 @@ def _(mo):
 
     | Setting | Value | Meaning |
     |:---|:---|:---|
-    | `MESHES_PER_CATEGORY` | 3 | Meshes sampled from each of the 9 Pix3D categories |
-    | `MIN_PHOTOS` | 3 | A mesh needs at least this many non-test photos to be sampled |
-    | `MAX_PHOTOS_PER_MESH` | 30 | At most this many photos per mesh are used, so that a few very popular meshes do not dominate |
+    | `MESHES_PER_CATEGORY` | 3 | Meshes sampled from each of the 9 Pix3D categories, for the contact sheet and the image statistics |
+    | `MIN_PHOTOS` | 3 | A sampled mesh needs at least this many non-test photos |
+    | `MAX_PHOTOS_PER_MESH` | 30 | Photos per sampled mesh used for the image statistics |
     | `SEED` | 0 | Fixed seed of the random sample |
+    | `QUERY_CHUNK` | 512 | Query photos read and turned into features at once (limits the memory) |
     | `LIGHTS` | L0 ... L4 | The light setups to compare (all presets in `configs/render.yaml`) |
     | `ALPHA` | from `configs/train.yaml` | Weight of the view score in the combined score |
     """)
@@ -110,6 +117,7 @@ def _():
     MIN_PHOTOS = 3
     MAX_PHOTOS_PER_MESH = 30
     SEED = 0
+    QUERY_CHUNK = 512
     LIGHTS = list(CFG["render"]["lighting_presets"])
     ALPHA = CFG["train"]["scoring"]["alpha"]
     BACKGROUND = tuple(CFG["data"]["background_rgb"])
@@ -128,6 +136,7 @@ def _():
         MESHES_PER_CATEGORY,
         MIN_PHOTOS,
         MeshRenderer,
+        QUERY_CHUNK,
         RENDER_DIR,
         SEED,
         VIEWS,
@@ -153,14 +162,16 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. Sample of meshes and query photos
+    ## 2. Gallery, queries, and the sample for the contact sheet
 
-    The next cell samples the meshes and their photos:
+    The next cell:
 
-    1. It reads the Pix3D meshes and queries from the catalog, and the test part of the
-       `seen_meshes` split (these photos are never used here).
-    2. For each category, it takes 3 random meshes among those with at least 3 non-test photos.
-    3. For each sampled mesh, it takes its non-test photos (at most 30, at random).
+    1. reads the Pix3D meshes (the gallery, 395) and queries from the catalog, and the test part of
+       the `seen_meshes` split (these photos are never used here); the queries are all other photos;
+    2. samples 3 random meshes per category (among those with at least 3 non-test photos) and up to
+       30 of their photos, for the contact sheet and the image statistics.
+
+    The table lists the sample:
 
     | Field | Meaning |
     |:---|:---|
@@ -190,6 +201,8 @@ def _(
     for _q in _queries:
         _photos_of.setdefault(_q["mesh_id"], []).append(_q)
     _meshes = [m for m in read_table(paths.MESHES_CSV) if m["dataset"] == "pix3d"]
+    gallery_meshes = sorted(_meshes, key=lambda m: m["mesh_id"])
+    all_queries = sorted(_queries, key=lambda q: q["query_id"])
 
     _rng = random.Random(SEED)
     sample_meshes, sample_queries, _rows = [], [], []
@@ -204,18 +217,23 @@ def _(
             sample_meshes.append(_mesh)
             sample_queries.extend(_used)
             _rows.append({"category": _category, "mesh_id": _mesh["mesh_id"], "photos_available": len(_photos), "photos_used": len(_used)})
-    print("SAMPLE", {"meshes": len(sample_meshes), "queries": len(sample_queries)})
-    mo.vstack([mo.md(f"**{len(sample_meshes)} meshes, {len(sample_queries)} query photos.**"), mo.ui.table(_rows, selection=None)])
-    return sample_meshes, sample_queries
+    print("SAMPLE", {"gallery": len(gallery_meshes), "queries": len(all_queries), "sample_meshes": len(sample_meshes), "sample_photos": len(sample_queries)})
+    mo.vstack([
+        mo.md(f"**Gallery: {len(gallery_meshes)} meshes. Queries: {len(all_queries)} photos.** "
+              f"Sample for the contact sheet: {len(sample_meshes)} meshes, {len(sample_queries)} photos."),
+        mo.ui.table(_rows, selection=None),
+    ])
+    return all_queries, gallery_meshes, sample_meshes, sample_queries
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 3. Renders
+    ## 3. Sample renders
 
-    The next two cells render every sampled mesh with every light setup (27 meshes x 5 setups x 25
-    views = 3,375 images, about 2 minutes). Renders that exist on disk are kept, so the button is
+    The next two cells render the sampled meshes with every light setup and save the images
+    (27 meshes x 5 setups x 25 views = 3,375 images, about 2 minutes), for the contact sheet and
+    the image statistics. Renders that exist on disk are kept, so the button is
     needed only once. When all renders exist, or when the notebook runs as a script, the renders
     are made or loaded without the button.
 
@@ -340,8 +358,8 @@ def _(mo):
     mo.md(r"""
     ## 5. Image statistics
 
-    The next cell measures the object pixels (not the grey background) of all renders of each
-    setup, and of the query photos (converted to grey) for comparison:
+    The next cell measures the object pixels (not the grey background) of the sample renders of
+    each setup, and of the sample photos (converted to grey) for comparison:
 
     | Field | Meaning |
     |:---|:---|
@@ -372,49 +390,131 @@ def _(BACKGROUND, Image, LIGHTS, load_views, mo, np, object_masks, paths, sample
         }
 
     _rows = [grey_statistics(_light, np.concatenate([load_views(_light, _m) for _m in sample_meshes])) for _light in LIGHTS]
-    query_images = np.stack([np.asarray(Image.open(paths.resolve(q["query_path"]))) for q in sample_queries])
-    _rows.append(grey_statistics("photos", query_images))
+    _rows.append(grey_statistics("photos", np.stack([np.asarray(Image.open(paths.resolve(q["query_path"]))) for q in sample_queries])))
     image_statistics = _rows
     print("STATISTICS", _rows)
     mo.ui.table(_rows, selection=None)
-    return image_statistics, query_images
+    return (image_statistics,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 6. Features
+    ## 6. Query features
 
-    The next cell turns every query photo and every render into a feature vector with the active
-    backbone and feature recipe (`configs/backbone.yaml`; DINOv3 ViT-B/16, class token). This takes
-    about 20 seconds. It returns:
-
-    - query features: (queries, 768);
-    - view features of each setup: (27 meshes, 25 views, 768).
+    The next cell turns every query photo into a feature vector with the active backbone and
+    feature recipe (`configs/backbone.yaml`; DINOv3 ViT-B/16, class token). It reads the photos in
+    chunks of 512, so that memory stays small, and takes about 40 seconds. Result: (8,557, 768).
     """)
     return
 
 
 @app.cell
-def _(BACKGROUND, CFG, FeatureExtractor, LIGHTS, VIEWS, load_views, np, object_masks, query_images, sample_meshes):
+def _(BACKGROUND, CFG, FeatureExtractor, Image, QUERY_CHUNK, all_queries, np, object_masks, paths, tqdm):
     extractor = FeatureExtractor(CFG["backbone"])
-    query_features = extractor.extract(query_images, object_masks(query_images, BACKGROUND))
-    view_features = {}
-    for _light in LIGHTS:
-        _images = np.concatenate([load_views(_light, _m) for _m in sample_meshes])  # (27 * 25, 224, 224, 3)
-        _features = extractor.extract(_images, object_masks(_images, BACKGROUND))
-        view_features[_light] = _features.reshape(len(sample_meshes), VIEWS, -1)
-    print("FEATURES", {"backbone": extractor.spec.name, "recipe": extractor.recipe, "queries": query_features.shape,
-                       "views": {k: v.shape for k, v in view_features.items()}})
-    return extractor, query_features, view_features
+    _parts = []
+    for _start in tqdm(range(0, len(all_queries), QUERY_CHUNK), desc="query features", unit="chunk"):
+        _images = np.stack([np.asarray(Image.open(paths.resolve(q["query_path"]))) for q in all_queries[_start : _start + QUERY_CHUNK]])
+        _parts.append(extractor.extract(_images, object_masks(_images, BACKGROUND)))
+    query_features = np.concatenate(_parts)
+    print("QUERY_FEATURES", {"backbone": extractor.spec.name, "recipe": extractor.recipe, "shape": query_features.shape})
+    return extractor, query_features
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 7. Retrieval results
+    ## 7. Gallery features
 
-    For each setup, every query photo is compared with the 27 meshes, and the meshes are ranked.
+    The next two cells render every gallery mesh with every light setup and turn the 25 views
+    straight into feature vectors; the images are not saved. The features of each setup are saved
+    in `gallery_features_<setup>.npz` (395 x 25 x 768 numbers, float16, about 15 MB) and loaded in
+    later runs, if they were made with the same meshes, backbone, and recipe. The first run takes
+    about 25 minutes (5 setups x 395 meshes); the button starts it.
+
+    | Field | Meaning | Expected |
+    |:---|:---|:---|
+    | `setup` | Light setup | |
+    | `source` | "computed" in this run, or "loaded" from the file | |
+    | `minutes` | Time to compute the features of this setup | |
+    | `views_touching_border` | Views in which the object touched the border of the raw render | 0 |
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    gallery_button = mo.ui.run_button(label="Compute the missing gallery features")
+    gallery_button
+    return (gallery_button,)
+
+
+@app.cell
+def _(
+    BACKGROUND,
+    CFG,
+    LIGHTS,
+    MeshRenderer,
+    RENDER_DIR,
+    VIEWS,
+    extractor,
+    gallery_button,
+    gallery_meshes,
+    mo,
+    np,
+    object_masks,
+    time,
+    tqdm,
+):
+    _mesh_ids = np.array([m["mesh_id"] for m in gallery_meshes])
+
+    def gallery_file(light):
+        return RENDER_DIR / f"gallery_features_{light}.npz"
+
+    def saved_features(light):
+        """The saved features of one setup, or None if missing or made with other meshes, backbone, or recipe."""
+        if not gallery_file(light).exists():
+            return None
+        saved = np.load(gallery_file(light))
+        same = (np.array_equal(saved["mesh_ids"], _mesh_ids) and str(saved["backbone"]) == extractor.spec.name
+                and str(saved["recipe"]) == extractor.recipe)
+        return saved["features"] if same else None
+
+    _missing = [light for light in LIGHTS if saved_features(light) is None]
+    mo.stop(
+        bool(_missing) and not gallery_button.value and mo.app_meta().mode != "script",
+        mo.md(f"Gallery features missing for {', '.join(_missing)} (about 5 minutes per setup). Press the button."),
+    )
+
+    _front = CFG["render"]["front_axis"]["pix3d"]
+    view_features, _rows = {}, []
+    for _light in LIGHTS:
+        _features = saved_features(_light)
+        if _features is not None:
+            view_features[_light] = _features
+            _rows.append({"setup": _light, "source": "loaded", "minutes": 0.0, "views_touching_border": "n/a"})
+            continue
+        _renderer = MeshRenderer.from_config(CFG["render"], lighting=_light)
+        _features = np.zeros((len(gallery_meshes), VIEWS, extractor.dim), dtype=np.float16)
+        _border, _start = 0, time.perf_counter()
+        for _i, _mesh in enumerate(tqdm(gallery_meshes, desc=f"gallery {_light}", unit="mesh")):
+            _views = _renderer.render_file(_mesh["mesh_path"], front_axis=_front)
+            _features[_i] = extractor.extract(_views.images, object_masks(_views.images, BACKGROUND))
+            _border += int(_views.touches_border.sum())
+        np.savez(gallery_file(_light), features=_features, mesh_ids=_mesh_ids, backbone=extractor.spec.name, recipe=extractor.recipe)
+        view_features[_light] = _features
+        _rows.append({"setup": _light, "source": "computed", "minutes": round((time.perf_counter() - _start) / 60, 1), "views_touching_border": _border})
+    print("GALLERY", _rows)
+    mo.ui.table(_rows, selection=None)
+    return (view_features,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 8. Retrieval results
+
+    For each setup, every query photo is compared with all 395 meshes, and the meshes are ranked.
     The main score is the **view score** (the best-matching view of each mesh).
 
     | Field | Meaning |
@@ -435,11 +535,11 @@ def _(mo):
 
 
 @app.cell
-def _(ALPHA, LIGHTS, metrics, mo, np, plt, query_features, sample_meshes, sample_queries, search, view_features):
-    _mesh_column = {m["mesh_id"]: i for i, m in enumerate(sample_meshes)}
-    _correct = np.array([_mesh_column[q["mesh_id"]] for q in sample_queries])
-    _query_categories = np.array([q["category"] for q in sample_queries])
-    _mesh_categories = np.array([m["category"] for m in sample_meshes])
+def _(ALPHA, LIGHTS, all_queries, gallery_meshes, metrics, mo, np, plt, query_features, search, view_features):
+    _mesh_column = {m["mesh_id"]: i for i, m in enumerate(gallery_meshes)}
+    _correct = np.array([_mesh_column[q["mesh_id"]] for q in all_queries])
+    _query_categories = np.array([q["category"] for q in all_queries])
+    _mesh_categories = np.array([m["category"] for m in gallery_meshes])
 
     hits_at_1 = {}  # per setup: True for each query whose correct mesh is first (view score)
     results, score_rows = [], []
@@ -476,7 +576,7 @@ def _(ALPHA, LIGHTS, metrics, mo, np, plt, query_features, sample_meshes, sample
     _axis.errorbar(LIGHTS, _values, yerr=[[v - lo for v, (lo, _) in zip(_values, _intervals)], [hi - v for v, (_, hi) in zip(_values, _intervals)]],
                    fmt="none", ecolor="black", capsize=4)
     _axis.set_ylabel("R@1 (%), view score")
-    _axis.set_title(f"Zero-shot R@1 on {len(sample_meshes)} meshes, {len(sample_queries)} photos")
+    _axis.set_title(f"Zero-shot R@1: {len(all_queries)} photos against {len(gallery_meshes)} meshes")
     chart.tight_layout()
     print("RESULTS", results)
     print("SCORES", score_rows)
@@ -487,18 +587,18 @@ def _(ALPHA, LIGHTS, metrics, mo, np, plt, query_features, sample_meshes, sample
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 8. R@1 per category
+    ## 9. R@1 per category
 
     The next cell gives R@1 (view score, %) for each category and setup. A setup can help some
     kinds of objects (for example flat-panelled wardrobes) more than others (thin-legged chairs).
-    The categories have few queries each, so single numbers here are noisy.
+    Categories with few queries (misc, tool) give noisy numbers.
     """)
     return
 
 
 @app.cell
-def _(LIGHTS, hits_at_1, mo, np, sample_queries):
-    _categories = np.array([q["category"] for q in sample_queries])
+def _(LIGHTS, all_queries, hits_at_1, mo, np):
+    _categories = np.array([q["category"] for q in all_queries])
     category_rows = []
     for _category in sorted(set(_categories)):
         _selected = _categories == _category
@@ -512,7 +612,7 @@ def _(LIGHTS, hits_at_1, mo, np, sample_queries):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 9. Save the results
+    ## 10. Save the results
 
     The button writes the results into a new run folder, `runs/<date>_pix3d_<backbone>_lighting_test/`:
 
@@ -520,8 +620,9 @@ def _(mo):
     - `metrics.json`: the sample, the image statistics, and all result tables;
     - `contact_sheet.png` and `r1_chart.png`.
 
-    When the notebook runs as a script, the results are saved without the button. The renders
-    in `data/derived/renders_lighting_test/` stay until the light setup is chosen.
+    When the notebook runs as a script, the results are saved without the button. The sample
+    renders and the gallery features in `data/derived/renders_lighting_test/` stay until the light
+    setup is chosen.
     """)
     return
 
@@ -544,7 +645,9 @@ def _(
     chart,
     contact_sheet,
     datetime,
+    all_queries,
     extractor,
+    gallery_meshes,
     git_state,
     image_statistics,
     json,
@@ -570,8 +673,11 @@ def _(
         "git_dirty": _dirty,
         "backbone": extractor.spec.name,
         "feature_recipe": extractor.recipe,
+        "gallery_meshes": len(gallery_meshes),
+        "queries": len(all_queries),
+        "query_set": "pix3d seen_meshes train + val (test excluded)",
         "sample": {"seed": SEED, "meshes_per_category": MESHES_PER_CATEGORY, "max_photos_per_mesh": MAX_PHOTOS_PER_MESH,
-                   "meshes": [m["mesh_id"] for m in sample_meshes], "queries": [q["query_id"] for q in sample_queries]},
+                   "meshes": [m["mesh_id"] for m in sample_meshes], "photos": [q["query_id"] for q in sample_queries]},
         "alpha": ALPHA,
         "image_statistics": image_statistics,
         "results_view_score": results,

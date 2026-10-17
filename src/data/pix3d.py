@@ -154,7 +154,9 @@ def read_photo_and_mask(photo_path: str | Path, mask_path: str | Path) -> tuple[
             only when the mask file belongs to another photo, so resizing cannot repair it.
     """
     with Image.open(paths.resolve(photo_path)) as photo:
-        image = photo.convert("RGB")
+        # A palette image with a transparent colour must go through RGBA first; Pillow warns
+        # otherwise. The RGB values are the same either way (the mask removes the background).
+        image = (photo.convert("RGBA") if photo.mode == "P" else photo).convert("RGB")
     with Image.open(paths.resolve(mask_path)) as mask_file:
         mask = mask_file.convert("L")  # one grey channel, values 0..255
     if mask.size != image.size:

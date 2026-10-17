@@ -26,7 +26,7 @@ ABO_MESHES_DIR = ABO_DIR / "meshes"
 DERIVED_DIR = DATA_DIR / "derived"
 CATALOG_DIR = DERIVED_DIR / "catalog"
 QUERIES_CSV = CATALOG_DIR / "queries.csv"
-SHAPES_CSV = CATALOG_DIR / "shapes.csv"
+MESHES_CSV = CATALOG_DIR / "meshes.csv"
 QUERIES_DIR = DERIVED_DIR / "queries"
 MASKS_DIR = DERIVED_DIR / "masks"
 RENDERS_DIR = DERIVED_DIR / "renders"
@@ -34,8 +34,9 @@ RENDER_CONFIG_FILE = RENDERS_DIR / "render_config.yaml"
 LIGHTING_TEST_DIR = DERIVED_DIR / "renders_lighting_test"
 FEATURES_DIR = DERIVED_DIR / "features"
 
-# Split files (small, tracked in git)
+# Split files (small, tracked in git): data/splits/<dataset>/<split name>.json
 SPLITS_DIR = DATA_DIR / "splits"
+SPLIT_NAMES = ("seen_meshes", "unseen_meshes", "unseen_categories")
 
 # Pretrained weights and our checkpoints
 WEIGHTS_DIR = ROOT / "weights"
@@ -54,6 +55,18 @@ def features_file(backbone: str, kind: str) -> Path:
     if kind not in FEATURE_KINDS:
         raise ValueError(f"kind must be one of {FEATURE_KINDS}, got {kind!r}")
     return FEATURES_DIR / f"{backbone}_{kind}.npz"
+
+
+def split_file(dataset: str, name: str, splits_dir: Path = SPLITS_DIR) -> Path:
+    """Return the file of one split of one dataset, e.g. `data/splits/pix3d/seen_meshes.json`."""
+    if name not in SPLIT_NAMES:
+        raise ValueError(f"name must be one of {SPLIT_NAMES}, got {name!r}")
+    return splits_dir / dataset / f"{name}.json"
+
+
+def queries_report_file(dataset: str, catalog_dir: Path = CATALOG_DIR) -> Path:
+    """Return the report file of the query step for one dataset, e.g. `pix3d_queries_report.json`."""
+    return catalog_dir / f"{dataset}_queries_report.json"
 
 
 def resolve(path: str | Path) -> Path:

@@ -17,7 +17,7 @@ Typical use in a script:
     cfg = config_from_args(parser.parse_args())
     lr = get_value(cfg, "train.optimizer.lr")
 
-    $ python scripts/05_train.py --set train.epochs=5 --set render.lighting=L3
+    $ python scripts/06_train.py --set train.epochs=5 --set render.lighting=L3
 """
 
 import argparse

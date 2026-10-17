@@ -265,11 +265,11 @@ def _(
             result["cos_bf16_vs_fp32"] = round(float(F.cosine_similarity(class_bf16, class32)), 5)
             result["fp16_finite"] = bool(torch.isfinite(class16).all())  # no overflow (inf) or NaN
 
-            # 5. Sanity check: the query against the renders of its own shape and of another chair.
+            # 5. Sanity check: the query against the renders of its own mesh and of another chair.
             own, _, _ = tokens(model, own_views.to(DEVICE), torch.float16)
             other, _, _ = tokens(model, other_views.to(DEVICE), torch.float16)
-            result["sim_own_shape"] = round(float(F.cosine_similarity(class16, own).max()), 3)
-            result["sim_other_shape"] = round(float(F.cosine_similarity(class16, other).max()), 3)
+            result["sim_own_mesh"] = round(float(F.cosine_similarity(class16, own).max()), 3)
+            result["sim_other_mesh"] = round(float(F.cosine_similarity(class16, other).max()), 3)
 
             # 6. Speed and peak memory: a batch of 64 images in fp16.
             batch = query.repeat(64, 1, 1, 1)
@@ -299,7 +299,7 @@ def _(mo):
     ## 4. Test inputs
 
     The next cell loads one Pix3D photo of a chair (`img/chair/0001.png`), the 12 renders of its
-    own 3D shape, and the 12 renders of another chair.
+    own 3D mesh, and the 12 renders of another chair.
 
     These are v1 images from `legacy/data/`: the photo is the v1 preprocessed version, and the renders
     come from the v1 renderer. They are temporary stand-ins. When the v2 queries and renders exist,
@@ -310,23 +310,23 @@ def _(mo):
 
 @app.cell
 def _(LEGACY_DATA, PIX3D_JSON, json, load_image, torch):
-    # Find the 3D shape of the test photo in the Pix3D annotations.
+    # Find the 3D mesh of the test photo in the Pix3D annotations.
     with open(PIX3D_JSON) as _f:
         _annotations = json.load(_f)
     _photo = next(entry for entry in _annotations if entry["img"] == "img/chair/0001.png")
-    own_shape = _photo["model"].split("/")[2]  # "model/chair/IKEA_POANG_2/model.obj" -> "IKEA_POANG_2"
+    own_mesh = _photo["model"].split("/")[2]  # "model/chair/IKEA_POANG_2/model.obj" -> "IKEA_POANG_2"
 
     # Choose another chair that also has v1 renders (the first in alphabetical order).
     _chairs = sorted({entry["model"].split("/")[2] for entry in _annotations if entry["category"] == "chair"})
-    other_shape = next(c for c in _chairs if c != own_shape and (LEGACY_DATA / "renders" / "chair" / c).exists())
+    other_mesh = next(c for c in _chairs if c != own_mesh and (LEGACY_DATA / "renders" / "chair" / c).exists())
 
     # Load the images. Shapes: query (1, 3, 224, 224); views (12, 3, 224, 224).
     _renders = LEGACY_DATA / "renders" / "chair"
     query = load_image(LEGACY_DATA / "processed" / "img" / "chair" / "0001.png").unsqueeze(0)
-    own_views = torch.stack([load_image(_renders / own_shape / f"view_{v:02d}.png") for v in range(12)])
-    other_views = torch.stack([load_image(_renders / other_shape / f"view_{v:02d}.png") for v in range(12)])
-    print("INPUTS", {"query": "img/chair/0001.png", "own_shape": own_shape, "other_shape": other_shape})
-    return other_shape, other_views, own_shape, own_views, query
+    own_views = torch.stack([load_image(_renders / own_mesh / f"view_{v:02d}.png") for v in range(12)])
+    other_views = torch.stack([load_image(_renders / other_mesh / f"view_{v:02d}.png") for v in range(12)])
+    print("INPUTS", {"query": "img/chair/0001.png", "own_mesh": own_mesh, "other_mesh": other_mesh})
+    return other_mesh, other_views, own_mesh, own_views, query
 
 
 @app.cell(hide_code=True)
@@ -339,7 +339,7 @@ def _(mo):
 
     | Field | Meaning | Good value |
     |:---|:---|:---|
-    | `backbone` | Name of the backbone | — |
+    | `backbone` | Name of the backbone | n/a |
     | `load_seconds` | Time to build the model and load its weights | a few seconds |
     | `params_millions` | Number of trainable values in the model, in millions (M = million) | as expected for the model size |
     | `class_token_shape` | Shape of the class token: (images, D), where D is the feature length. The class token is one extra vector that the backbone adds to the image patches. Through the attention layers it collects information from all patches, so at the output it summarizes the whole image. It is the usual image feature for retrieval: images with similar content give class tokens that point in similar directions | (1, 384), (1, 768), or (1, 1024) |
@@ -349,9 +349,9 @@ def _(mo):
     | `cos_fp16_vs_fp32` | Cosine similarity between the class token in fp16 and in fp32 | 1.0 (no loss from half precision) |
     | `cos_bf16_vs_fp32` | The same for bf16 | close to 1.0 |
     | `fp16_finite` | True if the fp16 output has no infinite or undefined (NaN) values | True |
-    | `sim_own_shape` | Highest cosine similarity between the photo and the 12 renders of its own chair | higher than `sim_other_shape` |
-    | `sim_other_shape` | Highest cosine similarity between the photo and the 12 renders of another chair | lower than `sim_own_shape` |
-    | `images_per_second` | Speed for batches of 64 images in fp16 | — |
+    | `sim_own_mesh` | Highest cosine similarity between the photo and the 12 renders of its own chair | higher than `sim_other_mesh` |
+    | `sim_other_mesh` | Highest cosine similarity between the photo and the 12 renders of another chair | lower than `sim_own_mesh` |
+    | `images_per_second` | Speed for batches of 64 images in fp16 | n/a |
     | `peak_vram_gib` | Highest GPU memory in use during the checks, in GiB | well below the GPU size |
     | `status` | "OK", or "FAILED" with the error message | OK |
 
@@ -381,11 +381,11 @@ def _(mo):
 
 
 @app.cell
-def _(mo, other_shape, own_shape, results):
+def _(mo, other_mesh, own_mesh, results):
     _all_ok = all(row["status"] == "OK" for row in results)
     _summary = (
         f"**Result: {'all backbones OK' if _all_ok else 'at least one backbone FAILED'}**\n\n"
-        f"Test inputs: photo `img/chair/0001.png`, own chair `{own_shape}`, other chair `{other_shape}`."
+        f"Test inputs: photo `img/chair/0001.png`, own chair `{own_mesh}`, other chair `{other_mesh}`."
     )
     print("SUMMARY", "ALL_OK" if _all_ok else "FAILURES")
     mo.vstack([mo.md(_summary), mo.ui.table(results, selection=None)])

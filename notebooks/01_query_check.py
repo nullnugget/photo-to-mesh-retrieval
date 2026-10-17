@@ -16,20 +16,20 @@ def _(mo):
     mo.md(r"""
     # 01: Query Check
 
-    This notebook checks the Pix3D query images that `scripts/01_prepare_pix3d.py` made.
+    This notebook checks the Pix3D query images that `scripts/03_make_queries.py` made.
     A query image is a photo after preparation: the background is replaced with neutral grey,
     the image is cropped tightly around the object, padded to a square, and resized to 224 × 224.
 
     The notebook shows:
 
-    1. the catalog: how many queries and shapes exist, per category, and which photos were left out;
+    1. the catalog: how many queries and meshes exist, per category, and which photos were left out;
     2. a contact sheet: random queries from every category, to check them by eye;
     3. examples of the preparation steps: photo, mask, and query side by side;
     4. automatic checks over all queries: size, framing, and background.
 
     **How to run**
 
-    - Run `python scripts/01_prepare_pix3d.py` first.
+    - Run `python scripts/03_make_queries.py --dataset pix3d` first.
     - Then, from the repository root: `python notebooks/01_query_check.py` (as a script), or
       `marimo edit notebooks/01_query_check.py` (interactively).
     """)
@@ -65,7 +65,7 @@ def _():
     from src import paths  # noqa: E402
     from src.config import load_config  # noqa: E402
     from src.data.catalog import read_table  # noqa: E402
-    from src.data.pix3d import read_photo_and_mask  # noqa: E402
+    from src.preprocess.queries import read_photo_and_mask  # noqa: E402
 
     DATA_CFG = load_config(["data.yaml"])["data"]
     IMAGE_SIZE = DATA_CFG["image_size"]  # side length of every query (224)
@@ -92,8 +92,8 @@ def _(mo):
     mo.md(r"""
     ## 2. Catalog and preparation report
 
-    The next cell reads the query and shape tables of the catalog and the preparation report.
-    It shows the number of queries and shapes per category, and the photos that the preparation
+    The next cell reads the query and mesh tables of the catalog and the report of the query step.
+    It shows the number of queries and meshes per category, and the photos that the preparation
     left out, with the reason.
     """)
     return
@@ -102,19 +102,19 @@ def _(mo):
 @app.cell
 def _(Counter, json, mo, paths, read_table):
     queries = [q for q in read_table(paths.QUERIES_CSV) if q["dataset"] == "pix3d"]
-    shapes = [s for s in read_table(paths.SHAPES_CSV) if s["dataset"] == "pix3d"]
-    report = json.loads((paths.CATALOG_DIR / "pix3d_report.json").read_text())
+    meshes = [m for m in read_table(paths.MESHES_CSV) if m["dataset"] == "pix3d"]
+    report = json.loads(paths.queries_report_file("pix3d").read_text())
 
     _queries_per_category = Counter(q["category"] for q in queries)
-    _shapes_per_category = Counter(s["category"] for s in shapes)
+    _meshes_per_category = Counter(m["category"] for m in meshes)
     category_rows = [
-        {"category": c, "queries": _queries_per_category[c], "shapes": _shapes_per_category[c]}
+        {"category": c, "queries": _queries_per_category[c], "meshes": _meshes_per_category[c]}
         for c in sorted(_queries_per_category)
     ]
-    print("CATALOG", {"queries": len(queries), "shapes": len(shapes), "left_out": [r["query_id"] for r in report["left_out"]]})
+    print("CATALOG", {"queries": len(queries), "meshes": len(meshes), "left_out": [r["query_id"] for r in report["left_out"]]})
     mo.vstack(
         [
-            mo.md(f"**{len(queries)} queries, {len(shapes)} shapes.** Left out: "
+            mo.md(f"**{len(queries)} queries, {len(meshes)} meshes.** Left out: "
                   + ", ".join(f"`{r['query_id']}` ({r['message'].split(':')[0]})" for r in report["left_out"])),
             mo.ui.table(category_rows, selection=None),
         ]

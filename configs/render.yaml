@@ -1,22 +1,22 @@
-# Render settings: the cameras, the image size, the material, and the lights used to render every 3D shape.
+# Render settings: the cameras, the image size, the material, and the lights used to render every 3D mesh.
 # Each render run writes a copy of these settings to data/derived/renders/render_config.yaml.
 render:
   rig: rings25                       # rings25 = 3 rings of 8 cameras + 1 top camera; icosahedron12 = the v1 rig
-  rings:                             # elevation = camera angle above the horizontal plane through the shape centre
+  rings:                             # elevation = camera angle above the horizontal plane through the mesh centre
     - {elevation_deg: -15, count: 8, azimuth_offset_deg: 0.0}
     - {elevation_deg: 15, count: 8, azimuth_offset_deg: 22.5}    # offset, so its cameras sit between the others
     - {elevation_deg: 45, count: 8, azimuth_offset_deg: 0.0}
   top: {elevation_deg: 85, count: 1}                             # 85, not 90: "look at" is undefined straight down
   fov_deg: 40                        # camera field of view
-  distance_margin: 1.05              # camera distance = margin / sin(fov / 2); shapes are scaled to a unit sphere
+  distance_margin: 1.05              # camera distance = margin / sin(fov / 2); meshes are scaled to a unit sphere
   render_size: 512                   # side length (pixels) of the raw render, before the crop
   output_size: 224                   # side length after the crop to the object, square padding, and resize
   crop_margin: 0.0                   # must be the same as data.crop_margin
   background_rgb: [128, 128, 128]    # must be the same as data.background_rgb
   material:
-    albedo: 0.7                      # brightness of the grey material that every shape gets
+    albedo: 0.7                      # brightness of the grey material that every mesh gets
     shininess: 10                    # size of the highlights (higher = smaller, sharper highlights)
-    use_textures: false              # false = ignore the mesh textures; all shapes look the same grey
+    use_textures: false              # false = ignore the mesh textures; all meshes look the same grey
   lighting: L2                       # name of the active preset below
   lighting_presets:                  # light setups to compare; select one with --set render.lighting=<name>
     L0: {type: point_at_camera, ambient: 0.5, diffuse: 0.3, specular: 0.2}            # the v1 setup

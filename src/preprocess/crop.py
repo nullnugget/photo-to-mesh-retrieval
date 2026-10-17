@@ -4,16 +4,27 @@ Queries (photos) and renders must look alike in framing, size, and background, s
 model compares the objects and not the way the images were made. Thus every image goes
 through `crop_to_square`, with the same settings:
 
-    1. Replace every pixel outside the object mask with a neutral grey.
-    2. Find the tightest box around the mask pixels.
-    3. Optionally enlarge the box by a margin (a fraction of its longer side).
-    4. Cut the image to the box.
-    5. Pad the cut to a square with the same grey, with the object in the centre.
+    1. Background: replace every pixel outside the object mask with a neutral grey.
+    2. Bounding box: find the smallest rectangle that contains every object pixel.
+    3. Margin (optional): make the box larger by the same number of pixels on all four sides.
+       The number is `margin` times the longer side of the box. Example: a box of 400 x 300
+       pixels with margin 0.05 grows by 0.05 x 400 = 20 pixels on each side, to 440 x 340.
+       With margin 0.0 (the project setting) the box stays tight around the object.
+    4. Cut: keep only the pixels inside the box.
+    5. Square: add grey rows or columns to the shorter side, half on each side, so that the
+       image becomes a square with the object in the centre.
     6. Resize the square to the output size (for example 224 x 224) with antialiasing.
 
 The result: the longer side of the object fills the frame (when the margin is 0), and the
-background is one uniform grey. Photos use their annotated or predicted mask; renders use the
-alpha channel of the renderer as their mask.
+background is one uniform grey.
+
+The function needs only an image and a True/False mask of the same size. It does not matter
+where the mask comes from:
+
+- Pix3D photos: the mask files of the dataset.
+- ABO photos: masks from the segmentation step (Grounding DINO finds a box, SAM 2.1 makes the mask).
+- Renders: the alpha channel of the renderer.
+- Demo photos: a SAM 2.1 mask from the box that the user draws.
 """
 
 import numpy as np
@@ -54,8 +65,9 @@ def crop_to_square(
         image: uint8 array (H, W, 3), RGB.
         mask: bool array (H, W); True = object.
         background_rgb: Colour of the background and of the padding.
-        margin: Extra border around the object, as a fraction of the longer side of its box.
-            0.0 gives a tight crop. The border is filled with the background colour.
+        margin: Extra border around the object. The border width in pixels is `margin` times the
+            longer side of the object's bounding box (0.05 on a 400-pixel side = 20 pixels on each
+            side). 0.0 gives a tight crop. The border is filled with the background colour.
         output_size: Side length of the square result, in pixels.
 
     Returns:
@@ -72,18 +84,26 @@ def crop_to_square(
     # 1. Background to grey. mask[..., None] has shape (H, W, 1), so it selects whole RGB pixels.
     masked = np.where(mask[..., None], image, background)
 
-    # 2. and 3. The tightest box, enlarged by the margin. The box may now extend past the image edges;
-    # step 5 fills such parts with the background colour.
+    # 2. Bounding box: the smallest rectangle that contains every object pixel. x0 and y0 are the
+    # first object column and row; x1 and y1 are one past the last ones, as in Python slices.
     x0, y0, x1, y1 = mask_bbox(mask)
+
+    # 3. Margin: grow the box by `border` pixels on all four sides. `border` is the margin times the
+    # longer side of the box (margin 0.05 and a 400 x 300 box: border = 20, new box 440 x 340).
+    # The grown box can extend past the image edges; step 5 fills those parts with grey.
     border = int(round(margin * max(x1 - x0, y1 - y0)))
     x0, y0, x1, y1 = x0 - border, y0 - border, x1 + border, y1 + border
 
-    # 4. Cut the part of the box that lies inside the image.
+    # 4. Cut: keep the pixels that are inside both the box and the image. The cut can be smaller
+    # than the box when the box extends past an image edge (only with a margin larger than 0).
     height, width = mask.shape
     cut = masked[max(y0, 0) : min(y1, height), max(x0, 0) : min(x1, width)]
 
-    # 5. Pad to a square. The square side is the longer side of the box. The padding puts the box
-    # in the centre and also restores any part of the box that was outside the image.
+    # 5. Square: pad the cut with grey to a square whose side is the longer side of the box.
+    # The shorter side gets half of the missing rows (or columns) on each side, so the object is in
+    # the centre. Example: a 400 x 300 box (width x height) gives a 400 x 400 square with 50 grey
+    # rows above and 50 below. The second term in pad_top and pad_left adds back the box rows and
+    # columns that were outside the image in step 4, so that the object keeps its place in the box.
     side = max(x1 - x0, y1 - y0)
     pad_top = (side - (y1 - y0)) // 2 + (max(y0, 0) - y0)
     pad_left = (side - (x1 - x0)) // 2 + (max(x0, 0) - x0)
@@ -100,24 +120,3 @@ def crop_to_square(
     resized = TF.resize(square, [output_size, output_size], antialias=True)
     return (resized.clamp(0.0, 1.0) * 255.0).round().byte().permute(1, 2, 0).numpy()
 
-
-if __name__ == "__main__":
-    # Stand-alone check (from the repository root: python -m src.preprocess.crop).
-    # It crops three Pix3D photos and saves each photo, its mask, and its crop to test_outputs/crop/.
-    from PIL import Image
-
-    from src import paths
-    from src.data.pix3d import load_annotations, photo_records, read_photo_and_mask
-
-    out_dir = paths.ensure_dir(paths.TEST_OUTPUTS_DIR / "crop")
-    records = {r.query_id: r for r in photo_records(load_annotations())}
-    for query_id in ["pix3d/chair/0001", "pix3d/bookcase/0001", "pix3d/table/0046"]:
-        record = records[query_id]
-        image, mask = read_photo_and_mask(record.photo_path, record.mask_path)
-        crop = crop_to_square(image, mask)
-        name = query_id.replace("/", "_")
-        Image.fromarray(image).save(out_dir / f"{name}_1_photo.png")
-        Image.fromarray(mask.astype(np.uint8) * 255).save(out_dir / f"{name}_2_mask.png")
-        Image.fromarray(crop).save(out_dir / f"{name}_3_crop.png")
-        print(f"{query_id}: photo {image.shape} -> crop {crop.shape}")
-    print(f"saved to {out_dir.relative_to(paths.ROOT)}")

@@ -1,27 +1,41 @@
 """Data splits: which query photos are used for training, for validation, and for the test.
 
-A split divides the query photos into three parts:
+A split divides the query photos of one dataset into three parts:
 
 - train: photos that the model learns from;
 - val:   photos that select checkpoints and settings during development;
 - test:  photos that give the reported results. They are never used to choose anything.
 
-The gallery (the 3D shapes that a search can return) always contains every shape, also the
-shapes whose photos are all in the test part. That is the real use case: a new 3D shape enters
-the database without any photos.
+The three splits differ in what is new at test time. The names say what the test part contains:
 
-Three splits answer three different questions:
+1. "seen_meshes": can the model find a mesh that it has seen in training photos, from a new photo
+   of it? Photos are split at random, so most meshes have photos in every part. This is the
+   easiest case. (For Pix3D, the test part is exactly the v1 evaluation set, so v1 and v2
+   results are comparable; see `src/data/pix3d.py`, `v1_test_query_ids`.)
+2. "unseen_meshes": can the model find a mesh of which it has never seen a photo? Meshes are
+   split within each category, and all photos of a mesh go to the same part. The model has seen
+   other meshes of the same category (other chairs), but not this one.
+3. "unseen_categories": can the model find meshes of a category that it has never trained on?
+   All photos of the held-out categories (for example every bookcase) form the test part.
 
-1. Image-level split ("pix3d_image_split"): can the model find a known shape from a new photo?
-   Photos are split at random; most shapes have photos in every part. The test part is exactly
-   the 15 % hold-out of v1 (same seed, same shuffle), so v1 and v2 results are comparable.
-2. Unseen-shape split ("unseen_shapes"): can the model find a shape that it never saw in a photo?
-   Shapes are split; all photos of a shape go to the same part.
-3. Leave-categories-out split ("leave_categories_out"): does the model work for a whole category
-   that it never trained on? All photos of the held-out categories form the test part.
+Example, the chair IKEA_POANG_2 with about 30 photos: in "seen_meshes", about 25 of its photos
+are training photos and about 3 are test photos. In "unseen_meshes", all 30 photos are in one
+part; if that part is the test part, no photo of this chair is used in training. In
+"unseen_categories" (bookcase and wardrobe held out), chairs stay in training.
 
-Every split is repeatable: it depends only on the input lists and a seed. Split files are small
-JSON files in `data/splits/` and are tracked in git, so that every run uses the same split.
+The gallery and the training. In real use, a new product's 3D mesh is added to the database
+after the training, and no photo of it was used for the training. The splits copy this:
+
+- During training, the model compares each training photo only with the meshes of the training
+  photos (the "training gallery"). Meshes whose photos are all in the val or test part are not in
+  the training gallery, so the model never sees them (not their photos and not their renders).
+- During evaluation, the gallery contains every mesh. Thus a test photo must find its mesh among
+  all meshes, also the meshes that the model has never seen.
+
+Every split is repeatable: it depends only on the input rows and a seed. Split files are small
+JSON files in `data/splits/<dataset>/` and are tracked in git, so that every run uses the same
+split. A split works for any dataset: it needs only the query id, the category, and the mesh id
+of each photo.
 """
 
 import json
@@ -52,6 +66,11 @@ def _stratified_sample(query_ids_by_category: dict[str, list[str]], fraction: fl
     return sample
 
 
+def _ids_by_category(rows: list[dict]) -> dict[str, list[str]]:
+    """Return {category: [query ids]}, with the categories in sorted order."""
+    return {c: [r["query_id"] for r in group] for c, group in _group_by(rows, "category").items()}
+
+
 def _make_split(name: str, description: str, seed: int, train, val, test) -> dict:
     """Build the split dict that is saved as JSON (sorted lists, plus their sizes)."""
     parts = {"train": sorted(train), "val": sorted(val), "test": sorted(test)}
@@ -69,43 +88,41 @@ def _make_split(name: str, description: str, seed: int, train, val, test) -> dic
     }
 
 
-def image_level_split(
-    annotations_query_ids: list[str],
+def seen_meshes_split(
     queries: list[dict],
     seed: int = 42,
-    v1_holdout_fraction: float = 0.15,
-    val_fraction_of_train: float = 0.10,
+    test_fraction: float = 0.15,
+    val_fraction: float = 0.10,
+    fixed_test: list[str] | None = None,
 ) -> dict:
-    """Split photos at random, with the same test part as v1.
+    """Split the photos at random (stratified by category). Meshes appear in several parts.
 
     Args:
-        annotations_query_ids: The query ids of ALL Pix3D photos, in the order of pix3d.json.
-            The v1 split shuffled exactly this list, so the order matters.
-        queries: The catalog rows of the photos that exist as queries (query_id, category).
-            Photos that could not be prepared are not in this list; they leave the split.
-        seed: Seed of the v1 shuffle (42 in v1) and of the validation sample.
-        v1_holdout_fraction: The v1 hold-out size (0.15): the last 15 % after the shuffle.
-        val_fraction_of_train: Part of each category's training photos kept apart for validation.
+        queries: Catalog rows of the photos that exist as queries (query_id, category).
+        seed: Seed of the random samples.
+        test_fraction: Share of each category's photos that forms the test part. Not used when
+            `fixed_test` is given.
+        val_fraction: Share of each category's remaining (non-test) photos kept for validation.
+        fixed_test: Optional list of query ids that must form the test part, for example the v1
+            evaluation set of Pix3D. Ids that are not in `queries` (photos that could not be
+            prepared) are ignored.
 
-    The v1 code was: `random.seed(42); random.shuffle(entries); cut = int(len(entries) * 0.85)`.
-    `random.Random(42).shuffle` gives the same order as that code.
+    The validation photos are always a stratified sample, so that every category is in them.
     """
-    shuffled = list(annotations_query_ids)
-    random.Random(seed).shuffle(shuffled)
-    cut = int(len(shuffled) * (1.0 - v1_holdout_fraction))
-    available = {q["query_id"]: q for q in queries}
-    train_pool = [qid for qid in shuffled[:cut] if qid in available]
-    test = [qid for qid in shuffled[cut:] if qid in available]
-
-    # Validation: a stratified sample of the training photos.
-    by_category: dict[str, list[str]] = defaultdict(list)
-    for qid in train_pool:
-        by_category[available[qid]["category"]].append(qid)
-    val = _stratified_sample(dict(sorted(by_category.items())), val_fraction_of_train, random.Random(seed))
-    train = [qid for qid in train_pool if qid not in val]
+    rng = random.Random(seed)
+    available = {q["query_id"] for q in queries}
+    if fixed_test is None:
+        test = _stratified_sample(_ids_by_category(queries), test_fraction, rng)
+        test_rule = f"a random {test_fraction:.0%} of each category"
+    else:
+        test = set(fixed_test) & available
+        test_rule = "a fixed list of photos"
+    remaining = [q for q in queries if q["query_id"] not in test]
+    val = _stratified_sample(_ids_by_category(remaining), val_fraction, rng)
+    train = [q["query_id"] for q in remaining if q["query_id"] not in val]
     return _make_split(
-        "pix3d_image_split",
-        "Photos split at random. The test part is the v1 hold-out (seed 42, last 15 % after the shuffle).",
+        "seen_meshes",
+        f"Photos split at random; most meshes have photos in every part. Test part: {test_rule}.",
         seed,
         train,
         val,
@@ -113,33 +130,33 @@ def image_level_split(
     )
 
 
-def unseen_shape_split(queries: list[dict], seed: int = 42, fractions: dict | None = None) -> dict:
-    """Split the shapes of each category into train, val, and test; each photo follows its shape.
+def unseen_meshes_split(queries: list[dict], seed: int = 42, fractions: dict | None = None) -> dict:
+    """Split the meshes of each category into train, val, and test; each photo follows its mesh.
 
     Args:
-        queries: Catalog rows (query_id, category, shape_id).
-        seed: Seed of the random shape assignment.
-        fractions: Shares of shapes, for example {"train": 0.7, "val": 0.1, "test": 0.2}.
+        queries: Catalog rows (query_id, category, mesh_id).
+        seed: Seed of the random mesh assignment.
+        fractions: Shares of meshes, for example {"train": 0.7, "val": 0.1, "test": 0.2}.
 
-    In every category with at least 3 shapes, val and test get at least 1 shape each.
+    In every category with at least 3 meshes, val and test get at least 1 mesh each.
     """
     fractions = fractions or {"train": 0.70, "val": 0.10, "test": 0.20}
     rng = random.Random(seed)
-    part_of_shape: dict[str, str] = {}
+    part_of_mesh: dict[str, str] = {}
     for category, rows in _group_by(queries, "category").items():
-        shapes = sorted({row["shape_id"] for row in rows})
-        rng.shuffle(shapes)
-        n = len(shapes)
+        meshes = sorted({row["mesh_id"] for row in rows})
+        rng.shuffle(meshes)
+        n = len(meshes)
         n_test = max(1, round(n * fractions["test"])) if n >= 3 else 0
         n_val = max(1, round(n * fractions["val"])) if n >= 3 else 0
-        for i, shape in enumerate(shapes):
-            part_of_shape[shape] = "test" if i < n_test else "val" if i < n_test + n_val else "train"
+        for i, mesh in enumerate(meshes):
+            part_of_mesh[mesh] = "test" if i < n_test else "val" if i < n_test + n_val else "train"
     parts = {"train": [], "val": [], "test": []}
     for row in queries:
-        parts[part_of_shape[row["shape_id"]]].append(row["query_id"])
+        parts[part_of_mesh[row["mesh_id"]]].append(row["query_id"])
     return _make_split(
-        "unseen_shapes",
-        "Shapes split within each category (about 70/10/20); all photos of a shape are in one part.",
+        "unseen_meshes",
+        "Meshes split within each category (about 70/10/20); all photos of a mesh are in one part.",
         seed,
         parts["train"],
         parts["val"],
@@ -147,7 +164,7 @@ def unseen_shape_split(queries: list[dict], seed: int = 42, fractions: dict | No
     )
 
 
-def leave_categories_out_split(
+def unseen_categories_split(
     queries: list[dict], held_out: list[str], seed: int = 42, val_fraction: float = 0.10
 ) -> dict:
     """Use whole categories as the test part.
@@ -156,18 +173,17 @@ def leave_categories_out_split(
         queries: Catalog rows (query_id, category).
         held_out: Categories whose photos form the test part, for example ["bookcase", "wardrobe"].
         seed: Seed of the validation sample.
-        val_fraction: Part of each remaining category kept apart for validation.
+        val_fraction: Share of each remaining category kept for validation.
     """
     unknown = set(held_out) - {row["category"] for row in queries}
     if unknown:
         raise ValueError(f"held-out categories not in the data: {sorted(unknown)}")
     test = [row["query_id"] for row in queries if row["category"] in held_out]
     remaining = [row for row in queries if row["category"] not in held_out]
-    by_category = {c: [r["query_id"] for r in rows] for c, rows in _group_by(remaining, "category").items()}
-    val = _stratified_sample(by_category, val_fraction, random.Random(seed))
+    val = _stratified_sample(_ids_by_category(remaining), val_fraction, random.Random(seed))
     train = [row["query_id"] for row in remaining if row["query_id"] not in val]
     return _make_split(
-        "leave_categories_out",
+        "unseen_categories",
         f"All photos of the held-out categories {sorted(held_out)} form the test part.",
         seed,
         train,

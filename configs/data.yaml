@@ -6,19 +6,23 @@ data:
   background_rgb: [128, 128, 128]    # neutral grey that replaces the background of queries and renders
   crop_margin: 0.0                   # extra border around the object before the square crop (0.0 = tight crop)
 
-  splits:
+  splits:                            # files: data/splits/<dataset>/<split name>.json
     seed: 42                         # fixed seed, so that every split is repeatable
-    image_level:                     # photos split at random; the same shapes appear in training and test
-      file: pix3d_image_split.json
-      v1_holdout_fraction: 0.15      # the test part is the same 15 % of photos that v1 used for validation
-      val_fraction_of_train: 0.10    # part of the training photos kept apart to select checkpoints
-    unseen_shapes:                   # shapes split, so test shapes have no training photos
-      file: unseen_shapes.json
+    seen_meshes:                     # photos split at random; most test meshes also have training photos
+      test_fraction: 0.15            # share of each category's photos in the test part (if no fixed test part)
+      val_fraction: 0.10             # share of each category's other photos kept apart to select checkpoints
+    unseen_meshes:                   # meshes split; no photo of a test mesh is used in training
       fractions: {train: 0.70, val: 0.10, test: 0.20}
-    leave_categories_out:            # whole categories kept out of training
-      file: leave_categories_out.json
-      held_out_pix3d: [bookcase, wardrobe]
-      held_out_abo: [lamp, planter, vase, ceiling_light]
+    unseen_categories:               # whole categories kept out of training
+      val_fraction: 0.10
+      held_out:
+        pix3d: [bookcase, wardrobe]
+        abo: [lamp, planter, vase, ceiling_light]
+
+  pix3d:
+    v1_test_part: true               # seen_meshes: use the v1 evaluation photos as the test part (comparable with v1)
+    v1_seed: 42                      # the v1 code shuffled the pix3d.json entries with this seed ...
+    v1_holdout_fraction: 0.15        # ... and evaluated the last 15 % of the shuffled list
 
   abo:
     max_models_per_class: null       # null = use every model of each class

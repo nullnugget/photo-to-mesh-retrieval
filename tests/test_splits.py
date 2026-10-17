@@ -1,23 +1,23 @@
 """Tests for src/data/splits.py.
 
-The synthetic tests need no dataset. The tests marked "data" use the real Pix3D annotations
-and are skipped when the dataset is missing.
+The synthetic tests need no dataset. The test marked "data" uses the real Pix3D annotations
+and is skipped when the dataset is missing.
 """
 
 import random
 
 import pytest
 
-from src.data.splits import image_level_split, leave_categories_out_split, unseen_shape_split
+from src.data.splits import seen_meshes_split, unseen_categories_split, unseen_meshes_split
 
 
 def _synthetic_queries():
-    """3 categories, 10 shapes each, 6 photos per shape (180 photos)."""
+    """3 categories, 10 meshes each, 6 photos per mesh (180 photos)."""
     rows = []
     for category in ["chair", "sofa", "table"]:
-        for s in range(10):
+        for m in range(10):
             for p in range(6):
-                rows.append({"query_id": f"x/{category}/{s}_{p}", "category": category, "shape_id": f"x/{category}/s{s}"})
+                rows.append({"query_id": f"x/{category}/{m}_{p}", "category": category, "mesh_id": f"x/{category}/m{m}"})
     return rows
 
 
@@ -31,66 +31,69 @@ def _assert_partition(split, queries):
     assert len(ids) == len(set(ids)) == len(queries)
 
 
-def test_image_level_split_matches_the_v1_procedure():
+def test_seen_meshes_uses_the_fixed_test_part():
     queries = _synthetic_queries()
     order = [q["query_id"] for q in queries]
-    split = image_level_split(order, queries, seed=7, v1_holdout_fraction=0.15)
-    expected = list(order)
     random.seed(7)  # the v1 code used the global random module
-    random.shuffle(expected)
-    assert sorted(expected[int(len(expected) * 0.85) :]) == split["parts"]["test"]
+    random.shuffle(order)
+    fixed = order[int(len(order) * 0.85) :]
+    split = seen_meshes_split(queries, seed=7, fixed_test=fixed)
+    assert split["parts"]["test"] == sorted(fixed)
     _assert_partition(split, queries)
 
 
-def test_unavailable_photos_leave_the_image_level_split():
+def test_fixed_test_ids_without_a_query_are_ignored():
     queries = _synthetic_queries()
-    order = [q["query_id"] for q in queries] + ["x/chair/broken"]  # in the annotations, not prepared
-    split = image_level_split(order, queries)
-    assert "x/chair/broken" not in _all_ids(split)
+    split = seen_meshes_split(queries, fixed_test=["x/chair/0_0", "x/chair/broken"])  # "broken" has no query image
+    assert split["parts"]["test"] == ["x/chair/0_0"]
     _assert_partition(split, queries)
 
 
-def test_validation_contains_every_category():
+def test_seen_meshes_without_fixed_test_is_stratified():
     queries = _synthetic_queries()
-    split = image_level_split([q["query_id"] for q in queries], queries)
-    val_categories = {qid.split("/")[1] for qid in split["parts"]["val"]}
-    assert val_categories == {"chair", "sofa", "table"}
-
-
-def test_unseen_shapes_share_no_shape_between_parts():
-    queries = _synthetic_queries()
-    split = unseen_shape_split(queries)
-    shape_of = {q["query_id"]: q["shape_id"] for q in queries}
-    shapes = {part: {shape_of[qid] for qid in ids} for part, ids in split["parts"].items()}
-    assert not (shapes["train"] & shapes["val"]) and not (shapes["train"] & shapes["test"]) and not (shapes["val"] & shapes["test"])
-    # 10 shapes per category: 2 test, 1 val, 7 train
-    assert len(shapes["test"]) == 6 and len(shapes["val"]) == 3
+    split = seen_meshes_split(queries, test_fraction=0.15, val_fraction=0.10)
+    for part in ("test", "val"):
+        categories = {qid.split("/")[1] for qid in split["parts"][part]}
+        assert categories == {"chair", "sofa", "table"}
+    assert split["counts"]["test"] == 3 * 9  # 15 % of 60 photos per category
     _assert_partition(split, queries)
 
 
-def test_leave_categories_out_puts_whole_categories_in_test():
+def test_unseen_meshes_share_no_mesh_between_parts():
     queries = _synthetic_queries()
-    split = leave_categories_out_split(queries, ["table"])
+    split = unseen_meshes_split(queries)
+    mesh_of = {q["query_id"]: q["mesh_id"] for q in queries}
+    meshes = {part: {mesh_of[qid] for qid in ids} for part, ids in split["parts"].items()}
+    assert not (meshes["train"] & meshes["val"]) and not (meshes["train"] & meshes["test"]) and not (meshes["val"] & meshes["test"])
+    # 10 meshes per category: 2 test, 1 val, 7 train
+    assert len(meshes["test"]) == 6 and len(meshes["val"]) == 3
+    _assert_partition(split, queries)
+
+
+def test_unseen_categories_puts_whole_categories_in_test():
+    queries = _synthetic_queries()
+    split = unseen_categories_split(queries, ["table"])
     assert {qid.split("/")[1] for qid in split["parts"]["test"]} == {"table"}
     assert all(qid.split("/")[1] != "table" for qid in split["parts"]["train"] + split["parts"]["val"])
     _assert_partition(split, queries)
     with pytest.raises(ValueError):
-        leave_categories_out_split(queries, ["lamp"])
+        unseen_categories_split(queries, ["lamp"])
 
 
 def test_splits_are_repeatable():
     queries = _synthetic_queries()
-    assert unseen_shape_split(queries, seed=3) == unseen_shape_split(queries, seed=3)
-    assert unseen_shape_split(queries, seed=3) != unseen_shape_split(queries, seed=4)
+    assert unseen_meshes_split(queries, seed=3) == unseen_meshes_split(queries, seed=3)
+    assert unseen_meshes_split(queries, seed=3) != unseen_meshes_split(queries, seed=4)
+    assert seen_meshes_split(queries, seed=3) == seen_meshes_split(queries, seed=3)
 
 
 @pytest.mark.data
-def test_real_image_level_test_part_is_the_v1_evaluation_set():
-    from src.data.pix3d import load_annotations, photo_records, query_id_of
+def test_real_seen_meshes_test_part_is_the_v1_evaluation_set():
+    from src.data.pix3d import load_annotations, photo_records, v1_test_query_ids
 
     annotations = load_annotations()
     broken = {"pix3d/table/0045", "pix3d/table/1749"}  # masks belong to other photos
     queries = [{"query_id": p.query_id, "category": p.category} for p in photo_records(annotations) if p.query_id not in broken]
-    split = image_level_split([query_id_of(e) for e in annotations], queries)
+    split = seen_meshes_split(queries, fixed_test=v1_test_query_ids(annotations))
     assert split["counts"]["test"] == 1510  # the number of queries that v1 evaluated
     assert sum(split["counts"].values()) == 10067

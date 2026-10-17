@@ -2,20 +2,20 @@
 # These are start values; they are tuned on the validation set.
 train:
   seed: 42                           # fixed seed, so that a run can be repeated
-  batch_size: 64                     # query images per step; every gallery shape is a negative in each step
+  batch_size: 64                     # query images per step; every mesh of the training gallery is a negative in each step
   epochs: 30
   optimizer: {name: adamw, lr: 1.0e-3, weight_decay: 1.0e-4}
   schedule: {name: cosine, warmup_epochs: 1}   # learning rate rises for 1 epoch, then falls along a cosine curve
   heads:
-    embedding_dim: 256               # length of every embedding (query, view, and shape)
+    embedding_dim: 256               # length of every embedding (query, view, and mesh)
     hidden_dim: 512                  # width of the hidden layer in each projector
-    aggregator: attention            # how 25 view embeddings become 1 shape embedding: attention or mean
+    aggregator: attention            # how 25 view embeddings become 1 mesh embedding: attention or mean
     view_dropout_min_views: 12       # during training, the aggregator sees a random 12 to 25 views
   loss:
     temperature: 0.1                 # divides the scores before the softmax; smaller = sharper probabilities
     category_weight: 0.3             # weight of the category loss in: loss = instance loss + weight * category loss
   scoring:
-    alpha: 0.5                       # score = alpha * best-view score + (1 - alpha) * shape score
+    alpha: 0.5                       # score = alpha * best-view score + (1 - alpha) * mesh score
     view_max: hard                   # best-view score: hard = plain maximum; soft = log-sum-exp (smooth maximum)
   augment:                           # random changes to training query images
     color_jitter: {brightness: 0.4, contrast: 0.4, saturation: 0.4, hue: 0.1}
@@ -24,6 +24,6 @@ train:
     zoom_out_min: 0.85               # the object can shrink to 85 % of the frame
     erasing_p: 0.25                  # probability to cover a small rectangle (imitates occlusion)
     mask_noise: true                 # small random changes to the mask edge (imitates imperfect masks)
-    hflip_p: 0.0                     # horizontal flip; off, because some shapes are not mirror-symmetric
+    hflip_p: 0.0                     # horizontal flip; off, because some meshes are not mirror-symmetric
   select_by: val_r1                  # keep the checkpoint with the best validation recall@1
   mini_fraction: 0.05                # fraction of the data used by quick --mini runs

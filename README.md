@@ -1,9 +1,9 @@
 # xdim-cbir: Cross-Dimensional Content-Based Image Retrieval
 
-Find the exact 3D shape of an object from one photo.
+Find the exact 3D mesh of an object from one photo.
 
 - **Input:** one photo of an object, and a box that marks the object.
-- **Output:** a ranked list of 3D shapes from a gallery of meshes.
+- **Output:** a ranked list of 3D meshes from a gallery.
 
 > **Status:** v1 (the baseline) is complete and kept in `legacy/`. v2 is in development; its code goes into `src/`, `scripts/`, and `configs/`.
 
@@ -18,8 +18,9 @@ Find the exact 3D shape of an object from one photo.
 
 ```
 legacy/      v1, complete and runnable (code unchanged since tag v1)
-src/         v2 code (Python package)                    [in development]
-scripts/     v2 commands, numbered in pipeline order     [in development]
+src/         v2 code (Python package): all functions      [in development]
+scripts/     v2 pipeline steps, numbered in order        [in development]
+notebooks/   checks and experiments (marimo)             [in development]
 configs/     v2 settings (YAML)                          [in development]
 runs/        one folder per run: configuration, log, metrics
 data/        datasets (not in git; only data/splits/ is tracked)
@@ -52,7 +53,15 @@ python src/indexing/evaluate.py
 
 ## Run v2
 
-To be written.
+Each pipeline step in `scripts/` is a marimo file with two ways to run it, from the repository root:
+
+- in the editor, with the options as form fields and a Run button: `marimo edit scripts/03_make_queries.py`;
+- in the terminal: `python scripts/03_make_queries.py --dataset pix3d` (add `--mini` for a quick check, `--help` for all options).
+
+| Step | Script | Status |
+|---|---|---|
+| Query images, catalog, and splits | `scripts/03_make_queries.py --dataset pix3d` | available |
+| Other steps | n/a | to be written |
 
 ## Data and model credits
 

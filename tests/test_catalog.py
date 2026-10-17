@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.data.catalog import QUERY_COLUMNS, SHAPE_COLUMNS, read_table, replace_dataset_rows, write_table
+from src.data.catalog import MESH_COLUMNS, QUERY_COLUMNS, read_table, replace_dataset_rows, write_table
 
 
 def _query_row(query_id, dataset="pix3d", truncated=False):
@@ -18,10 +18,17 @@ def test_round_trip_keeps_values_and_types(tmp_path):
     assert row["truncated"] is True and row["occluded"] is True and row["slightly_occluded"] is False
 
 
+def test_unknown_flags_are_read_as_none(tmp_path):
+    row = _query_row("abo/chair/x")
+    row.update(truncated=None, occluded=None, slightly_occluded=None)  # a dataset without these annotations
+    (read,) = read_table(write_table([row], tmp_path / "queries.csv", QUERY_COLUMNS))
+    assert read["truncated"] is None and read["occluded"] is None and read["slightly_occluded"] is None
+
+
 def test_integer_columns_are_read_as_int(tmp_path):
-    row = {column: "x" for column in SHAPE_COLUMNS}
+    row = {column: "x" for column in MESH_COLUMNS}
     row.update(num_photos=7, num_mesh_variants=1)
-    (read,) = read_table(write_table([row], tmp_path / "shapes.csv", SHAPE_COLUMNS))
+    (read,) = read_table(write_table([row], tmp_path / "meshes.csv", MESH_COLUMNS))
     assert read["num_photos"] == 7 and read["num_mesh_variants"] == 1
 
 

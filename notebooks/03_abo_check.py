@@ -16,8 +16,9 @@ def _(mo):
     mo.md(r"""
     # 03: ABO Check
 
-    This notebook checks the ABO files that `scripts/01_download_abo.py` downloaded:
+    This notebook checks the ABO files that the download step downloaded (`scripts/01_download_abo.py`):
 
+    0. optionally, a mini run of the download step (3 meshes per class and their photos);
     1. the selection: meshes and photos per class, and the results of the download;
     2. the mesh geometry: every PLY file against the ABO metadata (vertex count, face count, size);
     3. the orientation: silhouettes of one mesh per class from the front, the side, and the top,
@@ -28,9 +29,11 @@ def _(mo):
 
     **How to run**
 
-    - Run `python scripts/01_download_abo.py --mini` (or the full download) first.
-    - Then, from the repository root: `python notebooks/03_abo_check.py` (as a script), or
-      `marimo edit notebooks/03_abo_check.py` (interactively).
+    - Full download: run `python scripts/01_download_abo.py` first. Mini download: press the button
+      in section 2 (in the editor), or run the script with `--mini`.
+    - Then, from the repository root: `marimo edit notebooks/03_abo_check.py` (interactively), or
+      `python notebooks/03_abo_check.py` (as a script; it checks the full download if it exists,
+      otherwise the mini download).
     """)
     return
 
@@ -40,9 +43,7 @@ def _(mo):
     mo.md(r"""
     ## 1. Imports and settings
 
-    The next cell imports the libraries and the project modules. It also finds the downloads:
-    the full download in `data/raw/abo/`, the mini download in `test_outputs/download_abo_mini/`,
-    or both. The notebook checks the full download when it exists; in the editor you can choose.
+    The next cell imports the libraries and the project modules, including the download step.
     """)
     return
 
@@ -64,18 +65,13 @@ def _():
     sys.path.insert(0, str(PROJECT_ROOT))  # makes the project package "src" importable
     from pytorch3d.io import load_ply  # noqa: E402
 
+    from src.config import load_config  # noqa: E402
     from src.data import abo  # noqa: E402
     from src.pipeline import download_abo  # noqa: E402
 
-    DOWNLOADS = {
-        name: dirs
-        for name, dirs in {"full": download_abo.output_dirs(False), "mini": download_abo.output_dirs(True)}.items()
-        if (dirs["manifest"] / "download_report.json").exists()
-    }
     SAMPLE_SEED = 0  # fixed seed for the random samples below
     return (
         Counter,
-        DOWNLOADS,
         Image,
         ImageDraw,
         PROJECT_ROOT,
@@ -84,23 +80,59 @@ def _():
         csv,
         download_abo,
         json,
+        load_config,
         load_ply,
         np,
         random,
     )
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 2. Mini run (optional) and the download to check
+
+    The button runs the download step for 3 meshes per class and their photos
+    (`download_abo.run(..., mini=True)`, the same function as `scripts/01_download_abo.py --mini`).
+    It writes to `test_outputs/download_abo_mini/` (the metadata to `data/raw/abo/metadata/`) and
+    takes about a minute the first time; files that exist are skipped. Then choose which download
+    the rest of the notebook checks: `full` (`data/raw/abo/`) or `mini`. When the notebook runs as a
+    script, the button is not pressed.
+    """)
+    return
+
+
 @app.cell
-def _(DOWNLOADS, mo):
+def _(mo):
+    mini_button = mo.ui.run_button(label="Make the mini download")
+    mini_button
+    return (mini_button,)
+
+
+@app.cell
+def _(download_abo, load_config, mini_button):
+    # Runs only when the button is pressed; otherwise mini_report is None and nothing is downloaded.
+    mini_report = download_abo.run(load_config(), mini=True) if mini_button.value else None
+    return (mini_report,)
+
+
+@app.cell
+def _(download_abo, mini_report, mo):
+    _ = mini_report  # makes this cell run again after a mini run, so that a new download appears in the list
+    DOWNLOADS = {
+        name: dirs
+        for name, dirs in {"full": download_abo.output_dirs(False), "mini": download_abo.output_dirs(True)}.items()
+        if (dirs["manifest"] / "download_report.json").exists()
+    }
     download_choice = mo.ui.dropdown(list(DOWNLOADS), value=next(iter(DOWNLOADS)), label="download to check")
     download_choice
-    return (download_choice,)
+    return DOWNLOADS, download_choice
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. Selection and download results
+    ## 3. Selection and download results
 
     The next cell reads the manifest (the selected meshes and photos), the result row of each
     mesh, and the report of the download step.
@@ -148,7 +180,7 @@ def _(Counter, DOWNLOADS, abo, csv, download_choice, json, mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 3. Mesh geometry against the metadata
+    ## 4. Mesh geometry against the metadata
 
     The next cell reads every PLY file with PyTorch3D (the reader that the renderer uses) and
     compares it with the ABO metadata (`3dmodels.csv`):
@@ -202,7 +234,7 @@ def _(dirs, download_abo, load_ply, meshes, mo, np):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Orientation
+    ## 5. Orientation
 
     The renderer expects every mesh with +Y up and the front towards +Z (the Pix3D convention,
     which ABO also uses). The next cell draws, for one random mesh per class, three silhouettes
@@ -280,7 +312,7 @@ def _(Image, ImageDraw, SAMPLE_SEED, dirs, download_abo, load_ply, meshes, np, p
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 5. Photos
+    ## 6. Photos
 
     The next cell shows 8 random photos per class (one class per row), and measures all photos:
 

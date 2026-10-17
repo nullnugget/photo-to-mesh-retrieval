@@ -190,18 +190,22 @@ def run(cfg: dict, mini: bool = False, stages: tuple[str, ...] = STAGES, workers
     if "meshes" in stages:
         t0 = time.perf_counter()
         rows = _run_parallel(lambda m: download_mesh(fetcher, m, out["meshes"]), meshes, workers, "meshes")
-        rows = _merge_mesh_rows(out["manifest"] / "mesh_files.csv", rows)
-        status = Counter(r["status"] for r in rows)
+        status = Counter(r["status"] for r in rows)  # the results of this run
         downloaded = sum(int(r["bytes"] or 0) for r in rows if r["status"] == DONE)
-        full = sum(int(r["file_bytes"] or 0) for r in rows if r["status"] == DONE)
+        # The result table keeps, for a skipped mesh, the row of the run that downloaded it. The share
+        # of the full .glb bytes is measured over all rows of downloaded meshes, from every run.
+        all_rows = _merge_mesh_rows(out["manifest"] / "mesh_files.csv", rows)
+        ready = [r for r in all_rows if r["status"] == DONE]
+        geometry, full = sum(int(r["bytes"]) for r in ready), sum(int(r["file_bytes"]) for r in ready)
         report["meshes"] = {
             "status": dict(status),
             "bytes_downloaded": downloaded,
-            "share_of_full_files": round(downloaded / full, 4) if full else None,
+            "ready": len(ready),
+            "share_of_full_files": round(geometry / full, 4) if full else None,
             "seconds": round(time.perf_counter() - t0, 1),
             "failed": [{"mesh_id": r["mesh_id"], "message": r["message"]} for r in rows if r["status"] == FAILED],
         }
-        print(f"meshes: {dict(status)}; {downloaded / 1e6:.1f} MB")
+        print(f"meshes: {dict(status)}; {downloaded / 1e6:.1f} MB this run; {len(ready)} of {len(meshes)} ready")
 
     # 4. Photos.
     if "photos" in stages:

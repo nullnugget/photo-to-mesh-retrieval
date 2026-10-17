@@ -53,10 +53,7 @@ python src/indexing/evaluate.py
 
 ## Run v2
 
-Each pipeline step in `scripts/` is a marimo file with two ways to run it, from the repository root:
-
-- in the editor, with the options as form fields and a Run button: `marimo edit scripts/03_make_queries.py`;
-- in the terminal: `python scripts/03_make_queries.py --dataset pix3d` (add `--mini` for a quick check, `--help` for all options).
+Each pipeline step is a Python script in `scripts/`. Run it from the repository root, for example `python scripts/03_make_queries.py --dataset pix3d`. Add `--mini` for a quick check into `test_outputs/`, and `--help` for all options. Each step has a check notebook in `notebooks/` (open it with `marimo edit`), which can also start the mini run with a button.
 
 | Step | Script | Status |
 |---|---|---|

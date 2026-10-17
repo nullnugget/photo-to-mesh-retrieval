@@ -16,12 +16,13 @@ def _(mo):
     mo.md(r"""
     # 01: Query Check
 
-    This notebook checks the Pix3D query images that `scripts/03_make_queries.py` made.
+    This notebook checks the Pix3D query images that the query step made (`scripts/03_make_queries.py`).
     A query image is a photo after preparation: the background is replaced with neutral grey,
     the image is cropped tightly around the object, padded to a square, and resized to 224 × 224.
 
     The notebook shows:
 
+    0. optionally, a mini run of the query step (5 photos per category), to check the step quickly;
     1. the catalog: how many queries and meshes exist, per category, and which photos were left out;
     2. a contact sheet: random queries from every category, to check them by eye;
     3. examples of the preparation steps: photo, mask, and query side by side;
@@ -29,9 +30,10 @@ def _(mo):
 
     **How to run**
 
-    - Run `python scripts/03_make_queries.py --dataset pix3d` first.
-    - Then, from the repository root: `python notebooks/01_query_check.py` (as a script), or
-      `marimo edit notebooks/01_query_check.py` (interactively).
+    - Full outputs: run `python scripts/03_make_queries.py --dataset pix3d` first. Mini outputs: press
+      the button in section 2 (in the editor), or run the script with `--mini`.
+    - Then, from the repository root: `marimo edit notebooks/01_query_check.py` (interactively), or
+      `python notebooks/01_query_check.py` (as a script; it checks the full outputs).
     """)
     return
 
@@ -41,7 +43,7 @@ def _(mo):
     mo.md(r"""
     ## 1. Imports and settings
 
-    The next cell imports the libraries and the project modules, and reads the data settings
+    The next cell imports the libraries and the project modules (including the query step), and reads the data settings
     (image size and background colour) from `configs/data.yaml`. It also fixes the random seed
     for the samples, so that the notebook shows the same images every time.
     """)
@@ -65,6 +67,7 @@ def _():
     from src import paths  # noqa: E402
     from src.config import load_config  # noqa: E402
     from src.data.catalog import read_table  # noqa: E402
+    from src.pipeline import make_queries  # noqa: E402
     from src.preprocess.queries import read_photo_and_mask  # noqa: E402
 
     DATA_CFG = load_config(["data.yaml"])["data"]
@@ -78,6 +81,8 @@ def _():
         Image,
         ImageDraw,
         json,
+        load_config,
+        make_queries,
         np,
         paths,
         random,
@@ -90,7 +95,48 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. Catalog and preparation report
+    ## 2. Mini run (optional) and the outputs to check
+
+    The button runs the query step on 5 photos per category (`make_queries.run(..., mini=True)`,
+    the same function as `scripts/03_make_queries.py --mini`). It writes only to
+    `test_outputs/make_queries_mini/` and takes a few seconds. Then choose which outputs the rest of
+    the notebook checks: `full` (the real outputs in `data/`) or `mini`. When the notebook runs as
+    a script, the button is not pressed and the full outputs are checked.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mini_button = mo.ui.run_button(label="Make the mini outputs")
+    mini_button
+    return (mini_button,)
+
+
+@app.cell
+def _(load_config, make_queries, mini_button):
+    # Runs only when the button is pressed; otherwise mini_report is None and nothing is written.
+    mini_report = make_queries.run("pix3d", load_config(), mini=True) if mini_button.value else None
+    return (mini_report,)
+
+
+@app.cell
+def _(make_queries, mini_report, mo):
+    _ = mini_report  # makes this cell run again after a mini run, so that new outputs appear in the list
+    OUTPUTS = {
+        name: dirs
+        for name, dirs in {"full": make_queries.output_dirs(False), "mini": make_queries.output_dirs(True)}.items()
+        if (dirs["catalog"] / "queries.csv").exists()
+    }
+    outputs_choice = mo.ui.dropdown(list(OUTPUTS), value=next(iter(OUTPUTS)), label="outputs to check")
+    outputs_choice
+    return OUTPUTS, outputs_choice
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 3. Catalog and preparation report
 
     The next cell reads the query and mesh tables of the catalog and the report of the query step.
     It shows the number of queries and meshes per category, and the photos that the preparation
@@ -100,10 +146,11 @@ def _(mo):
 
 
 @app.cell
-def _(Counter, json, mo, paths, read_table):
-    queries = [q for q in read_table(paths.QUERIES_CSV) if q["dataset"] == "pix3d"]
-    meshes = [m for m in read_table(paths.MESHES_CSV) if m["dataset"] == "pix3d"]
-    report = json.loads(paths.queries_report_file("pix3d").read_text())
+def _(Counter, OUTPUTS, json, mo, outputs_choice, paths, read_table):
+    _catalog = OUTPUTS[outputs_choice.value]["catalog"]
+    queries = [q for q in read_table(_catalog / paths.QUERIES_CSV.name) if q["dataset"] == "pix3d"]
+    meshes = [m for m in read_table(_catalog / paths.MESHES_CSV.name) if m["dataset"] == "pix3d"]
+    report = json.loads(paths.queries_report_file("pix3d", _catalog).read_text())
 
     _queries_per_category = Counter(q["category"] for q in queries)
     _meshes_per_category = Counter(m["category"] for m in meshes)
@@ -125,7 +172,7 @@ def _(Counter, json, mo, paths, read_table):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 3. Contact sheet
+    ## 4. Contact sheet
 
     The next cell shows 8 random queries from each category, one category per row.
 
@@ -168,23 +215,23 @@ def _(Image, ImageDraw, IMAGE_SIZE, paths, queries, random, SAMPLE_SEED):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Preparation steps
+    ## 5. Preparation steps
 
     The next cell shows, for a few photos, the original photo, its mask (white = object), and the
     resulting query. The examples include a photo with several products (the mask selects one),
-    a truncated photo, and a photo with an occluding object.
+    a truncated photo, and a photo with an occluding object (when the chosen outputs contain them;
+    the mini outputs have only 5 photos per category).
     """)
     return
 
 
 @app.cell
 def _(Image, mo, np, paths, queries, read_photo_and_mask):
-    _examples = ["pix3d/chair/0001", "pix3d/bookcase/0001", "pix3d/table/0046"]
-    _truncated = next(q["query_id"] for q in queries if q["truncated"])
-    _occluded = next(q["query_id"] for q in queries if q["occluded"])
     _by_id = {q["query_id"]: q for q in queries}
+    _examples = [i for i in ["pix3d/chair/0001", "pix3d/bookcase/0001", "pix3d/table/0046"] if i in _by_id]
+    _examples += [next((q["query_id"] for q in queries if q[_flag]), None) for _flag in ("truncated", "occluded")]
     _cells = []
-    for _query_id in _examples + [_truncated, _occluded]:
+    for _query_id in dict.fromkeys(i for i in _examples if i):  # unique, in order
         _q = _by_id[_query_id]
         _photo, _mask = read_photo_and_mask(_q["photo_path"], _q["mask_path"])
         _row = [
@@ -200,7 +247,7 @@ def _(Image, mo, np, paths, queries, read_photo_and_mask):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 5. Automatic checks over all queries
+    ## 6. Automatic checks over all queries
 
     The next cell opens every query and measures:
 

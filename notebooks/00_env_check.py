@@ -175,7 +175,18 @@ def _(mo):
 
 
 @app.cell
-def _(DEVICE, F, IMAGENET_MEAN, IMAGENET_STD, TF, importlib, sys, time, torch, tvio):
+def _(
+    DEVICE,
+    F,
+    IMAGENET_MEAN,
+    IMAGENET_STD,
+    TF,
+    importlib,
+    sys,
+    time,
+    torch,
+    tvio,
+):
     def load_backbone(name, code_dir, weights_file):
         """Build the backbone `name` from the code in `code_dir`, and load the weights in `weights_file`.
 
@@ -329,13 +340,13 @@ def _(mo):
     The fields of a row:
 
     | Field | Meaning | Good value |
-    |---|---|---|
+    |:---|:---|:---|
     | `backbone` | Name of the backbone | — |
     | `load_seconds` | Time to build the model and load its weights | a few seconds |
     | `params_millions` | Number of trainable values in the model, in millions (M = million) | as expected for the model size |
-    | `class_token_shape` | Shape of the class token: (images, D). D is the feature length | (1, 384), (1, 768), or (1, 1024) |
-    | `patch_tokens_shape` | Shape of the patch tokens: (images, patches, D). A 224-pixel image gives 14 × 14 = 196 patches of 16 pixels (DINOv3), or 16 × 16 = 256 patches of 14 pixels (DINOv2) | (1, 196, D) or (1, 256, D) |
-    | `extra_tokens_shape` | Shape of the extra (storage or register) tokens: (images, 4, D) | (1, 4, D) |
+    | `class_token_shape` | Shape of the class token: (images, D), where D is the feature length. The class token is one extra vector that the backbone adds to the image patches. Through the attention layers it collects information from all patches, so at the output it summarizes the whole image. It is the usual image feature for retrieval: images with similar content give class tokens that point in similar directions | (1, 384), (1, 768), or (1, 1024) |
+    | `patch_tokens_shape` | Shape of the patch tokens: (images, patches, D). The backbone cuts the image into small squares (patches) and gives one vector to each. At the output, each patch token describes its square in the context of the whole image (for example "the edge of a chair leg"). The patch tokens keep the layout of the image, so they can describe only the object: the average of the tokens inside the object mask ignores the background. A 224-pixel image gives 14 × 14 = 196 patches of 16 pixels (DINOv3), or 16 × 16 = 256 patches of 14 pixels (DINOv2) | (1, 196, D) or (1, 256, D) |
+    | `extra_tokens_shape` | Shape of the extra tokens: (images, 4, D). DINOv3 calls them "storage" tokens and DINOv2 "register" tokens. They are 4 learned vectors with no position in the image. The backbone uses them as working memory for global information, which keeps the patch tokens clean (without them, some background patches carry this information and show as noise). The project does not use them as features | (1, 4, D) |
     | `repeat_max_abs_diff` | Largest difference between two runs on the same image | 0.0 (exactly repeatable) |
     | `cos_fp16_vs_fp32` | Cosine similarity between the class token in fp16 and in fp32 | 1.0 (no loss from half precision) |
     | `cos_bf16_vs_fp32` | The same for bf16 | close to 1.0 |

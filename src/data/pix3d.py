@@ -20,6 +20,10 @@ Identifiers used by the project:
   "pix3d/chair/IKEA_POANG_2". The category is part of the identifier because some folder
   names appear in two categories (for example IKEA_EKTORP_1 is a chair and a sofa).
 
+Two photos have broken masks: the mask file belongs to another photo (other size, other
+object or pose). They are "img/table/0045.png" and "img/table/1749.jpg". `read_photo_and_mask`
+raises `MaskMismatchError` for them, and the preparation script leaves them out.
+
 Five chair folders (for example IKEA_MARKUS) contain one posed mesh variant for each photo
 (a swivel chair at different angles). They are still one shape. The reader uses the first
 variant in annotation order as the mesh of the shape, and counts the variants.
@@ -35,6 +39,10 @@ from PIL import Image
 from src import paths
 
 DATASET = "pix3d"
+
+
+class MaskMismatchError(ValueError):
+    """The mask does not have the size of its photo, so it belongs to another image."""
 
 
 @dataclass(frozen=True)
@@ -140,22 +148,24 @@ def read_photo_and_mask(photo_path: str | Path, mask_path: str | Path) -> tuple[
 
     Photos come in several formats and modes (JPEG, PNG, one TIFF; grayscale, RGBA, palette).
     Pillow reads all of them, and `convert("RGB")` gives 3 channels in every case.
-    A few masks do not have the size of their photo. Such a mask is resized to the photo size
-    with nearest-neighbour sampling, which keeps it strictly black and white.
+
+    Raises:
+        MaskMismatchError: If the mask size differs from the photo size. In Pix3D this happens
+            only when the mask file belongs to another photo, so resizing cannot repair it.
     """
     with Image.open(paths.resolve(photo_path)) as photo:
         image = photo.convert("RGB")
     with Image.open(paths.resolve(mask_path)) as mask_file:
         mask = mask_file.convert("L")  # one grey channel, values 0..255
     if mask.size != image.size:
-        mask = mask.resize(image.size, Image.NEAREST)
+        raise MaskMismatchError(f"{mask_path}: mask size {mask.size} differs from photo size {image.size}")
     # Mask pixels above the middle grey are object pixels.
     return np.asarray(image, dtype=np.uint8), np.asarray(mask) > 127
 
 
 if __name__ == "__main__":
     # Stand-alone check (from the repository root: python -m src.data.pix3d).
-    # It reads the annotations, counts photos and shapes, and reads the photo whose mask size differs.
+    # It reads the annotations, counts photos and shapes, and checks the two photos with broken masks.
     from collections import Counter
 
     annotations = load_annotations()
@@ -164,6 +174,10 @@ if __name__ == "__main__":
     print(f"photos: {len(photos)} | shapes: {len(shapes)}")
     print("photos per category:", dict(Counter(p.category for p in photos)))
     print("shapes with several mesh variants:", [(s.shape_id, s.num_mesh_variants) for s in shapes if s.num_mesh_variants > 1])
-    example = next(p for p in photos if p.query_id == "pix3d/table/0045")  # its mask is smaller than the photo
-    image, mask = read_photo_and_mask(example.photo_path, example.mask_path)
-    print(f"{example.query_id}: image {image.shape}, mask {mask.shape}, object pixels {mask.mean():.1%}")
+    by_id = {p.query_id: p for p in photos}
+    for query_id in ["pix3d/table/0045", "pix3d/table/1749"]:
+        try:
+            read_photo_and_mask(by_id[query_id].photo_path, by_id[query_id].mask_path)
+            print(f"{query_id}: read without error (unexpected)")
+        except MaskMismatchError as error:
+            print(f"{query_id}: MaskMismatchError, as expected ({error})")

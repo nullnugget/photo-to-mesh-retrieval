@@ -78,3 +78,15 @@ def test_images_are_not_mirrored(renderer):
     top_rows = (front[:16] != 128).any(axis=2)  # the top quarter: only the tall box reaches it
     columns = np.nonzero(top_rows.any(axis=0))[0]
     assert columns.min() > 32  # all of it is in the right half of the image
+
+
+
+@pytest.mark.gpu
+@pytest.mark.data
+def test_tile_overflow_is_detected_and_repaired(capfd):
+    # pix3d/tool/SS_3 (100,000 triangles) puts more than a fifth of its triangles into one rasterizer
+    # tile in some views, so the default limit of PyTorch3D overflows.
+    renderer = MeshRenderer.from_config(load_config(["render.yaml"])["render"], "cuda")
+    renderer.render_file("data/raw/pix3d/model/tool/SS_3/model.obj", front_axis="-z")
+    assert renderer.overflow_retries >= 1  # detected and rasterized again
+    assert "Bin size was too small" not in capfd.readouterr().out  # the message was caught, not printed

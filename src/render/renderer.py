@@ -24,6 +24,10 @@ Clipping check: the camera distance keeps the unit sphere inside every image, so
 should touch the image border. `RenderedViews.touches_border` reports it for every view.
 """
 
+import os
+import sys
+import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,6 +45,41 @@ from src.render.normals import NORMAL_MODES, corner_normals
 from src.render.rig import CameraPose, camera_distance, rig_from_config
 from src.render.simplify import merge_vertices_in_grid
 
+
+OVERFLOW_MESSAGE = "Bin size was too small"  # what PyTorch3D prints when a rasterizer tile overflows
+
+
+class _CapturedText:
+    """Holds the text that `native_output_captured` collected."""
+
+    text = ""
+
+
+@contextmanager
+def native_output_captured():
+    """Collect what native (C++/CUDA) code prints to standard output while the block runs.
+
+    PyTorch3D's rasterizer reports a tile overflow only by printing a message from its GPU code,
+    which Python's `sys.stdout` does not see. This redirects the operating-system file descriptor 1
+    to a temporary file for the duration of the block, then restores it and reads the file. GPU code
+    prints only when the GPU finishes its queued work, so the block waits for the GPU before the
+    output is restored.
+    """
+    captured = _CapturedText()
+    sys.stdout.flush()
+    saved_descriptor = os.dup(1)
+    with tempfile.TemporaryFile() as buffer:
+        os.dup2(buffer.fileno(), 1)
+        try:
+            yield captured
+        finally:
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()  # let the GPU finish, so that its messages are printed now
+            sys.stdout.flush()
+            os.dup2(saved_descriptor, 1)
+            os.close(saved_descriptor)
+            buffer.seek(0)
+            captured.text = buffer.read().decode(errors="replace")
 
 @dataclass(frozen=True)
 class RenderSettings:
@@ -127,17 +166,43 @@ class MeshRenderer:
         self.rotation, self.translation = rotation, translation
         self.frames = camera_frames(poses, self.device)
         self.camera_positions = self.frames["back"] * self.distance  # (views, 3)
-        self.raster_settings = RasterizationSettings(
-            image_size=settings.render_size,
-            blur_radius=0.0,  # hard edges: a pixel is covered by a triangle or not
-            faces_per_pixel=1,  # only the nearest triangle is needed
-            cull_backfaces=False,  # keep triangles seen from behind (see step 3 in the module description)
-        )
+        self.overflow_retries = 0  # batches rasterized again because a tile overflowed (see _rasterize)
 
     @classmethod
     def from_config(cls, render_cfg: dict, device: str | torch.device = "cuda", lighting: str | None = None) -> "MeshRenderer":
         """Make a renderer from the `render` section; `lighting` overrides the active light setup."""
         return cls(RenderSettings.from_config(render_cfg), rig_from_config(render_cfg), setup_from_config(render_cfg, lighting), device)
+
+    def _rasterize(self, meshes: Meshes, cameras: FoVPerspectiveCameras, num_faces: int):
+        """Rasterize a batch, and make sure that no triangle is lost.
+
+        PyTorch3D first sorts the triangles into square tiles ("bins") of the image. Each tile holds
+        at most `max_faces_per_bin` triangles; PyTorch3D's default is a fifth of the triangles (at
+        least 10,000). When a small, detailed part puts more triangles into one tile, the extra
+        triangles are missing from the image, and PyTorch3D only prints a message ("Bin size was too
+        small"). In Pix3D this happens for 7 of 395 meshes.
+
+        A larger limit makes every mesh slower (the time grows with the limit). Thus the batch is
+        rasterized with the default first; if the message appears, it is rasterized again with a
+        limit equal to the number of triangles, which can never overflow.
+        """
+
+        def rasterize(max_faces_per_bin: int):
+            settings = RasterizationSettings(
+                image_size=self.settings.render_size,
+                blur_radius=0.0,  # hard edges: a pixel is covered by a triangle or not
+                faces_per_pixel=1,  # only the nearest triangle is needed
+                max_faces_per_bin=max_faces_per_bin,
+                cull_backfaces=False,  # keep triangles seen from behind (see step 3 in the module description)
+            )
+            return MeshRasterizer(cameras=cameras, raster_settings=settings)(meshes)
+
+        with native_output_captured() as printed:
+            fragments = rasterize(max(10_000, num_faces // 5))  # PyTorch3D's default limit
+        if OVERFLOW_MESSAGE in printed.text:
+            self.overflow_retries += 1
+            fragments = rasterize(num_faces)
+        return fragments
 
     def _render_batch(self, vertices: torch.Tensor, faces: torch.Tensor, normals: torch.Tensor, views: slice) -> tuple[torch.Tensor, torch.Tensor]:
         """Rasterize and shade some views. Returns (brightness (n, H, W), covered mask (n, H, W)).
@@ -150,7 +215,7 @@ class MeshRenderer:
             R=self.rotation[views], T=self.translation[views], fov=self.settings.fov_deg, device=self.device
         )
         meshes = Meshes(verts=[vertices], faces=[faces]).extend(count)  # the same mesh once per view
-        fragments = MeshRasterizer(cameras=cameras, raster_settings=self.raster_settings)(meshes)
+        fragments = self._rasterize(meshes, cameras, len(faces))
         visible_face = fragments.pix_to_face  # (n, H, W, 1): index of the visible triangle, -1 = background
         covered = visible_face[..., 0] >= 0
 

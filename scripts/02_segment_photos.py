@@ -9,8 +9,9 @@ The masks have the Pix3D format (0 = background, 255 = object) and go to
 `data/derived/masks/<dataset>/<category>/`. The step can be stopped and started again: existing
 masks are skipped. With changed settings it stops, unless --overwrite is given.
 
-A mini run (--mini) segments 3 photos per category into `test_outputs/segment_mini/`. The check
-notebook `notebooks/05_segment_check.py` can start a mini run with a button and shows the results.
+A mini run (--mini) segments 3 random photos of each category (or --mini-count N; fixed seed) into
+`test_outputs/segment_mini/`. The check notebooks show the results: `notebooks/05_segment_check.py`
+for Pix3D (it can also start a mini run with a button), `notebooks/03_abo_check.py` for ABO.
 
 The logic is in `src/pipeline/segment_photos.py`; the models in `src/preprocess/segment.py`.
 
@@ -18,6 +19,7 @@ Usage (from the repository root):
     python scripts/02_segment_photos.py --dataset pix3d --split seen_meshes --parts train val   # tuning photos
     python scripts/02_segment_photos.py --dataset pix3d --split seen_meshes --parts test        # final test photos
     python scripts/02_segment_photos.py --dataset pix3d --mini
+    python scripts/02_segment_photos.py --dataset abo --mini --mini-count 20                    # sample to review the rules
     python scripts/02_segment_photos.py --dataset abo
 """
 
@@ -40,13 +42,16 @@ def main() -> None:
                         help="where the box comes from (default: reference_box for pix3d, detector for abo)")
     parser.add_argument("--split", choices=paths.SPLIT_NAMES, default=None, help="pix3d: only photos of this split ...")
     parser.add_argument("--parts", nargs="+", choices=["train", "val", "test"], default=None, help="... and these parts")
-    parser.add_argument("--mini", action="store_true", help="3 photos per category, into test_outputs/")
+    parser.add_argument("--mini", action="store_true", help="only a few photos per category, into test_outputs/")
+    parser.add_argument("--mini-count", type=int, default=segment_photos.MINI_PHOTOS_PER_CATEGORY,
+                        help="photos per category of a mini run (default 3)")
     parser.add_argument("--overwrite", action="store_true", help="make every mask again (also with changed settings)")
     parser.add_argument("--device", default="cuda", help="cuda or cpu")
     add_config_args(parser)
     args = parser.parse_args()
     segment_photos.run(args.dataset, config_from_args(args), prompt=args.prompt, split=args.split, parts=args.parts,
-                       mini=args.mini, overwrite=args.overwrite, device=args.device)
+                       mini=args.mini, overwrite=args.overwrite, device=args.device,
+                       mini_count=args.mini_count)
 
 
 if __name__ == "__main__":

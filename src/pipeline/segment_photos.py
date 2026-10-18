@@ -31,11 +31,12 @@ Outputs (normal run):
     data/derived/masks/<dataset>_segment_results.csv        one row per photo (see RESULT_COLUMNS)
     data/derived/masks/<dataset>_segment_report.json        totals of all rows
 
-A mini run segments 3 photos per category into `test_outputs/segment_mini/`.
+A mini run segments 3 random photos of each category (or `mini_count`; fixed seed) into `test_outputs/segment_mini/`.
 """
 
 import csv
 import json
+import random
 import time
 from collections import Counter
 from dataclasses import dataclass
@@ -55,6 +56,7 @@ from src.preprocess import segment
 
 PROMPTS = ("reference_box", "detector")
 MINI_PHOTOS_PER_CATEGORY = 3
+MINI_SEED = 0  # seed of the random photos of a mini run
 DONE, SKIPPED, FAILED = "done", "skipped", "failed"
 KEPT, REMOVED = "kept", "removed"
 # One row per photo in <dataset>_segment_results.csv. Cells that do not apply stay empty (for
@@ -143,9 +145,18 @@ def abo_items() -> list[PhotoItem]:
     ]
 
 
-def _first_per_category(items: list[PhotoItem], count: int) -> list[PhotoItem]:
-    taken: Counter = Counter()
-    return [i for i in items if (taken.update([i.category]) or taken[i.category] <= count)]
+def _sample_per_category(items: list[PhotoItem], count: int, seed: int = MINI_SEED) -> list[PhotoItem]:
+    """Keep `count` random photos of each category (fixed seed), in their original order.
+
+    Random, and not the first photos: the ABO photos are sorted by image id, and the first ids of a
+    class are mostly small images (often colour swatches), so the first photos are not typical.
+    """
+    by_category: dict[str, list[PhotoItem]] = {}
+    for item in items:
+        by_category.setdefault(item.category, []).append(item)
+    rng = random.Random(seed)
+    chosen = {id(i) for group in by_category.values() for i in rng.sample(group, min(count, len(group)))}
+    return [i for i in items if id(i) in chosen]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -267,6 +278,7 @@ def run(
     mini: bool = False,
     overwrite: bool = False,
     device: str = "cuda",
+    mini_count: int = MINI_PHOTOS_PER_CATEGORY,
 ) -> dict:
     """Segment the photos of one dataset, and return the report (also saved as JSON).
 
@@ -276,9 +288,11 @@ def run(
         prompt: "reference_box" or "detector" (None = reference_box for Pix3D, detector for ABO).
         split, parts: Pix3D only: segment only these parts of this split (for example "seen_meshes",
             ["train", "val"]). None = all photos.
-        mini: True = 3 photos per category, into test_outputs/segment_mini/.
+        mini: True = only `mini_count` random photos of each category (fixed seed), into test_outputs/segment_mini/.
         overwrite: True = make every mask again, also with changed settings.
         device: "cuda" or "cpu".
+        mini_count: Photos per category of a mini run (3 by default; for example 20 for a sample
+            that is large enough to review the ABO cleaning rules).
 
     Raises:
         ValueError: For an unknown dataset or prompt, a reference box without reference masks, or a
@@ -299,14 +313,14 @@ def run(
     else:
         raise ValueError(f"unknown dataset {dataset!r}")
     if mini:
-        items = _first_per_category(items, MINI_PHOTOS_PER_CATEGORY)
+        items = _sample_per_category(items, mini_count)
 
     segment_cfg = cfg["segment"]
     root = output_root(mini)
     _check_settings(config_file(dataset, root), {"prompt": prompt, "segment": segment_cfg}, overwrite)
     segmenter = segment.Segmenter(segment_cfg["segmenter"], device=device)
     detector = segment.Detector(segment_cfg["detector"], device=device) if prompt == "detector" else None
-    print(f"{dataset}: {len(items)} photos{' (mini)' if mini else ''}; box from {prompt}; "
+    print(f"{dataset}: {len(items)} photos{f' (mini, {mini_count} per category)' if mini else ''}; box from {prompt}; "
           f"SAM mask '{segmenter.box_mask}' -> {(root / dataset).relative_to(paths.ROOT)}")
 
     rows = []
@@ -327,6 +341,7 @@ def run(
     report = {
         "dataset": dataset,
         "mini": mini,
+        "mini_count": mini_count if mini else None,
         "prompt": prompt,
         "split": split,
         "parts": parts,

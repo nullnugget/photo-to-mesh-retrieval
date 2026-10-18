@@ -23,9 +23,9 @@ def _(mo):
     2. the mesh geometry: every PLY file against the ABO metadata (vertex count, face count, size);
     3. the orientation: silhouettes of one mesh per class from the front, the side, and the top,
        next to the main catalog photo of the product;
-    4. the photos: a contact sheet per class, and their sizes.
-
-    Later, the same notebook will also check the masks of the segmentation step.
+    4. the photos: a contact sheet per class, and their sizes;
+    5. the masks of the segment step (`scripts/02_segment_photos.py --dataset abo`): which photos the
+       cleaning rules keep or remove, and why, with the masks drawn on the photos (section 7).
 
     **How to run**
 
@@ -34,6 +34,9 @@ def _(mo):
     - Then, from the repository root: `marimo edit notebooks/03_abo_check.py` (interactively), or
       `python notebooks/03_abo_check.py` (as a script; it checks the full download if it exists,
       otherwise the mini download).
+    - Section 7 needs the segment step: a sample to review the cleaning rules with
+      `python scripts/02_segment_photos.py --dataset abo --mini --mini-count 20` (20 random photos per
+      class, about 5 minutes on the GPU), or the full run with `--dataset abo`.
     """)
     return
 
@@ -43,7 +46,8 @@ def _(mo):
     mo.md(r"""
     ## 1. Imports and settings
 
-    The next cell imports the libraries and the project modules, including the download step.
+    The next cell imports the libraries and the project modules, including the download step and
+    the segment step.
     """)
     return
 
@@ -65,16 +69,21 @@ def _():
     sys.path.insert(0, str(PROJECT_ROOT))  # makes the project package "src" importable
     from pytorch3d.io import load_ply  # noqa: E402
 
+    from src import paths  # noqa: E402
     from src.config import load_config  # noqa: E402
     from src.data import abo  # noqa: E402
-    from src.pipeline import download_abo  # noqa: E402
+    from src.data.catalog import read_table  # noqa: E402
+    from src.pipeline import download_abo, segment_photos  # noqa: E402
+    from src.preprocess import segment  # noqa: E402
 
     SAMPLE_SEED = 0  # fixed seed for the random samples below
+    REVIEW_TILES = 18  # photos per review grid in section 7
     return (
         Counter,
         Image,
         ImageDraw,
         PROJECT_ROOT,
+        REVIEW_TILES,
         SAMPLE_SEED,
         abo,
         csv,
@@ -83,7 +92,11 @@ def _():
         load_config,
         load_ply,
         np,
+        paths,
         random,
+        read_table,
+        segment,
+        segment_photos,
     )
 
 
@@ -366,6 +379,145 @@ def _(Image, ImageDraw, SAMPLE_SEED, dirs, download_abo, mo, np, photos, random)
                 _image.thumbnail((_tile, _tile))
                 _sheet.paste(_image, (_label + _c * _tile + (_tile - _image.width) // 2, _r * _tile + (_tile - _image.height) // 2))
     mo.vstack([mo.ui.table([_measures], selection=None), _sheet])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 7. Masks and cleaning (segment step)
+
+    The segment step finds each ABO photo's object with Grounding DINO (prompt: the class name, for
+    example "sofa."), makes the SAM 2.1 mask from the most confident box, and applies the cleaning rules
+    (`configs/segment.yaml`, `segment.cleaning`). A photo is **removed** for one of these reasons:
+
+    | Reason | Rule | Typical photo |
+    |:---|:---|:---|
+    | `no_detection` | No box reaches the detector threshold (`box_threshold`, 0.35) | colour swatch, label, text-only image |
+    | `close_up` | The box touches more than `max_edges_touched` (2) photo edges | detail of a material, a drawer, a leg |
+    | `mask_too_small` | The mask covers less than `min_mask_area` (5 %) of the photo | the object is tiny, or the detector chose a small part |
+    | `mask_too_large` | The mask covers more than `max_mask_area` (90 %) of the photo | swatch or texture that fills the frame |
+
+    Choose the outputs to check: `sample` (`--mini --mini-count 20`, in `test_outputs/segment_mini/`) or
+    `full` (`data/derived/masks/`).
+    """)
+    return
+
+
+@app.cell
+def _(mo, segment_photos):
+    SEGMENT_OUTPUTS = {
+        name: root
+        for name, root in {"full": segment_photos.output_root(False), "sample": segment_photos.output_root(True)}.items()
+        if segment_photos.results_file("abo", root).exists()
+    }
+    mo.stop(not SEGMENT_OUTPUTS, mo.md("No ABO masks yet. Run `python scripts/02_segment_photos.py --dataset abo --mini --mini-count 20`."))
+    segment_choice = mo.ui.dropdown(list(SEGMENT_OUTPUTS), value=next(iter(SEGMENT_OUTPUTS)), label="masks to check")
+    segment_choice
+    return SEGMENT_OUTPUTS, segment_choice
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 7.1 Kept and removed photos per class
+
+    | Field | Meaning |
+    |:---|:---|
+    | `class` | Our class name (the last row adds up all classes) |
+    | `photos` | Photos segmented |
+    | `kept`, `kept_share` | Photos that pass every rule, and their share |
+    | `no_detection`, `close_up`, `mask_too_small`, `mask_too_large` | Removed photos per reason (see the table above) |
+    | `median_detector_score` | Median confidence of the chosen box (photos with a detection) |
+    | `median_mask_area` | Median share of the photo covered by the mask (kept photos) |
+
+    A class with a low `kept_share` or many `no_detection` rows may need another prompt (`segment.prompts`).
+    """)
+    return
+
+
+@app.cell
+def _(Counter, SEGMENT_OUTPUTS, abo, download_abo, mo, np, paths, read_table, segment_choice, segment_photos):
+    SEGMENT_ROOT = SEGMENT_OUTPUTS[segment_choice.value]
+    _, _photos = abo.read_manifest(paths.ABO_MANIFEST_DIR)
+    _path_of = {p.image_id: download_abo.photo_file(paths.ABO_IMAGES_DIR, p) for p in _photos}
+    # One record per segmented photo: the results row, the photo file, and the mask file.
+    SEGMENTED = [
+        {**r, "image_id": r["photo_id"].split("/")[-1], "photo_file": _path_of[r["photo_id"].split("/")[-1]],
+         "mask_file": SEGMENT_ROOT / "abo" / r["category"] / (r["photo_id"].split("/")[-1] + ".png")}
+        for r in read_table(segment_photos.results_file("abo", SEGMENT_ROOT))
+        if r["status"] == "done"
+    ]
+    REASONS = ["no_detection", "close_up", "mask_too_small", "mask_too_large"]
+
+    def _summary(name, rows):
+        reasons = Counter(r["reason"] for r in rows if r["verdict"] == "removed")
+        scores = [float(r["detector_score"]) for r in rows if r["detector_score"] not in ("", None)]
+        areas = [float(r["mask_area"]) for r in rows if r["verdict"] == "kept"]
+        kept = sum(r["verdict"] == "kept" for r in rows)
+        return {"class": name, "photos": len(rows), "kept": kept, "kept_share": round(kept / max(len(rows), 1), 2),
+                **{reason: reasons[reason] for reason in REASONS},
+                "median_detector_score": round(float(np.median(scores)), 3) if scores else None,
+                "median_mask_area": round(float(np.median(areas)), 3) if areas else None}
+
+    _table = [_summary(c, [r for r in SEGMENTED if r["category"] == c]) for c in sorted({r["category"] for r in SEGMENTED})]
+    _table.append(_summary("all", SEGMENTED))
+    print("CLEANING", _table[-1])
+    mo.ui.table(_table, selection=None, page_size=30)
+    return REASONS, SEGMENTED
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 7.2 Review grid
+
+    Each tile shows a photo with its mask in **red** and the detector box in **yellow**. The caption gives
+    the class, the photo size, the verdict and reason, the detector confidence, and the mask area. Choose
+    a class, a verdict, and a reason; the grid shows up to 18 random photos of the selection (fixed seed).
+
+    What to look for: kept photos should show the whole object (or most of it) with a mask on the object;
+    removed photos should be swatches, details, labels, or photos without the object. A good photo that
+    was removed, or a close-up that was kept, shows which rule to change.
+    """)
+    return
+
+
+@app.cell
+def _(REASONS, SEGMENTED, mo):
+    review_class = mo.ui.dropdown(["all"] + sorted({r["category"] for r in SEGMENTED}), value="all", label="class")
+    review_verdict = mo.ui.dropdown(["all", "kept", "removed"], value="kept", label="verdict")
+    review_reason = mo.ui.dropdown(["all"] + REASONS, value="all", label="reason (removed photos)")
+    mo.hstack([review_class, review_verdict, review_reason], justify="start")
+    return review_class, review_reason, review_verdict
+
+
+@app.cell
+def _(Image, ImageDraw, REVIEW_TILES, SAMPLE_SEED, SEGMENTED, mo, np, random, review_class, review_reason, review_verdict, segment):
+    _rows = [
+        r for r in SEGMENTED
+        if review_class.value in ("all", r["category"])
+        and review_verdict.value in ("all", r["verdict"])
+        and review_reason.value in ("all", r["reason"])
+    ]
+    _rows = random.Random(SAMPLE_SEED).sample(_rows, min(REVIEW_TILES, len(_rows)))
+
+    def review_tile(row, size=220):
+        """The photo with the mask (red) and the box (yellow), scaled to fit `size` pixels, and its caption."""
+        with Image.open(row["photo_file"]) as photo:
+            pixels = np.asarray(photo.convert("RGB")).astype(float)
+        if row["mask_file"].exists():
+            mask = segment.read_mask(row["mask_file"])
+            pixels[mask] = pixels[mask] * 0.5 + np.array([255, 0, 0]) * 0.5
+        tile = Image.fromarray(pixels.astype(np.uint8))
+        if row["box"]:
+            ImageDraw.Draw(tile).rectangle([float(v) for v in row["box"].split()], outline=(255, 200, 0), width=max(2, tile.width // 120))
+        caption = (f"{row['category']} {tile.width}x{tile.height}  \n{row['verdict']} {row['reason']}  \n"
+                   f"score {row['detector_score'] or '-'}, area {row['mask_area'] or '-'}")
+        tile.thumbnail((size, size))
+        return mo.vstack([mo.image(tile), mo.md(caption)])
+
+    mo.hstack([review_tile(r) for r in _rows], wrap=True, justify="start") if _rows else mo.md("No photos in this selection.")
     return
 
 

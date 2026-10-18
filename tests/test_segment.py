@@ -9,7 +9,7 @@ import pytest
 from PIL import Image
 
 from src.config import load_config
-from src.pipeline.segment_photos import KEPT, REMOVED, cleaning_verdict
+from src.pipeline.segment_photos import KEPT, REMOVED, cleaning_verdict, is_background_mask, object_candidate
 from src.preprocess import segment
 
 
@@ -144,3 +144,37 @@ def test_grow_mask_adds_a_ring_and_stays_in_the_box():
 def test_box_mask_covers_the_box_only():
     inside = segment.box_mask((10, 20), (2, 3, 7, 9))
     assert inside.sum() == 5 * 6 and inside[3:9, 2:7].all()
+
+
+def _product_photo():
+    """A white product photo with a dark object (rows 20-60, columns 30-90), its box, and two masks."""
+    photo = np.full((80, 120, 3), 255, np.uint8)
+    photo[20:60, 30:90] = (40, 40, 40)
+    box = (25, 15, 95, 65)
+    obj = np.zeros((80, 120), bool)
+    obj[20:60, 30:90] = True
+    background = segment.box_mask((80, 120), box) & ~obj  # the white pixels around the object, inside the box
+    return photo, box, obj, background
+
+
+def test_background_measures_tell_object_and_background_apart():
+    photo, box, obj, background = _product_photo()
+    assert segment.background_measures(photo, obj, box) == (0.0, 1.0)  # object: no white, covers all coloured pixels
+    assert segment.background_measures(photo, background, box) == (1.0, 0.0)  # background: all white, covers none
+    white = np.full_like(photo, 250)
+    white[20:60, 30:90] = 245  # a white cabinet: near-white, but its edge (a shadow line) is coloured
+    white[59, 30:90] = 120
+    cabinet = obj.copy()
+    white_share, coverage = segment.background_measures(white, cabinet, box)
+    assert white_share > 0.9 and coverage == 1.0
+    rules = {"white_share_above": 0.8, "coverage_below": 0.5}
+    assert is_background_mask(*segment.background_measures(photo, background, box), rules)
+    assert not is_background_mask(white_share, coverage, rules)  # the white cabinet is not flagged
+
+
+def test_object_candidate_picks_the_object_or_none():
+    photo, box, obj, background = _product_photo()
+    rules = {"near_white_level": 235, "repair_white_share_below": 0.5, "repair_coverage_above": 0.6}
+    candidates = [segment.MaskResult(background, 0.95), segment.MaskResult(obj, 0.80)]
+    assert object_candidate(photo, box, candidates, rules) is candidates[1]  # despite SAM's lower score
+    assert object_candidate(photo, box, candidates[:1], rules) is None

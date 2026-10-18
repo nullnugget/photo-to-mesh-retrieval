@@ -404,6 +404,7 @@ def _(mo):
     | Reason | Rule | Typical photo |
     |:---|:---|:---|
     | `no_detection` | No box reaches the detector threshold (`box_threshold`, 0.35) | colour swatch, label, text-only image |
+    | `background_mask` | SAM's mask is the white background of a product photo (at least 80 % near-white pixels, less than half of the object's coloured pixels), and none of SAM's three candidate masks shows the object. When a candidate does show the object, it replaces the mask, and the photo stays (`mask_repaired`) | dumbbell or dark furniture on white |
     | `close_up` | The box touches 3 or 4 photo edges, or touches any edge and covers at least 60 % of the photo (`max_edges_touched`, `close_up_box_share`) | detail of a material, a drawer, a leg |
     | `box_too_small` | The longer box side is under 30 % of the longer photo side, or under 112 pixels (`min_box_side`, `min_box_pixels`) | a small object far away in a room photo |
     | `mask_too_small` | The mask covers less than `min_mask_area` (1 %) of the photo | SAM found almost nothing in the box |
@@ -441,7 +442,8 @@ def _(mo):
     | `class` | Our class name (the last row adds up all classes) |
     | `photos` | Photos segmented |
     | `kept`, `kept_share` | Photos that pass every rule, and their share |
-    | `no_detection`, `close_up`, `box_too_small`, `mask_too_small`, `mask_too_large` | Removed photos per reason (see the table above) |
+    | `no_detection`, `background_mask`, `close_up`, `box_too_small`, `mask_too_small`, `mask_too_large` | Removed photos per reason (see the table above) |
+    | `repaired` | Kept photos whose background mask was replaced by a SAM candidate |
     | `median_detector_score` | Median confidence of the chosen box (photos with a detection) |
     | `median_mask_area` | Median share of the photo covered by the mask (kept photos) |
 
@@ -462,7 +464,7 @@ def _(Counter, SEGMENT_OUTPUTS, abo, download_abo, mo, np, paths, read_table, se
         for r in read_table(segment_photos.results_file("abo", SEGMENT_ROOT))
         if r["status"] == "done"
     ]
-    REASONS = ["no_detection", "close_up", "box_too_small", "mask_too_small", "mask_too_large"]
+    REASONS = ["no_detection", "background_mask", "close_up", "box_too_small", "mask_too_small", "mask_too_large"]
 
     def _summary(name, rows):
         reasons = Counter(r["reason"] for r in rows if r["verdict"] == "removed")
@@ -471,6 +473,7 @@ def _(Counter, SEGMENT_OUTPUTS, abo, download_abo, mo, np, paths, read_table, se
         kept = sum(r["verdict"] == "kept" for r in rows)
         return {"class": name, "photos": len(rows), "kept": kept, "kept_share": round(kept / max(len(rows), 1), 2),
                 **{reason: reasons[reason] for reason in REASONS},
+                "repaired": sum(str(r.get("mask_repaired", "")) == "1" for r in rows),
                 "median_detector_score": round(float(np.median(scores)), 3) if scores else None,
                 "median_mask_area": round(float(np.median(areas)), 3) if areas else None}
 

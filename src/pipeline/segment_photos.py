@@ -6,8 +6,10 @@ Two ways to get the box that SAM needs (`prompt`):
   is the quality check of SAM (how close are SAM's masks to the reference masks?) and the input of
   the end-to-end test (retrieval with SAM masks, as in the demo, where the user draws the box).
 - "detector": Grounding DINO finds the box from the class name (ABO photos, which have no masks).
-  Then the cleaning rules decide whether the photo is kept (see `cleaning_verdict`). ABO photos that
-  show the meshes of several gallery entries are not segmented (see `abo_items`).
+  Then the cleaning rules decide whether the photo is kept (see `cleaning_verdict`). If SAM's mask is
+  the white background of a product photo, one of SAM's three candidate masks that shows the object
+  replaces it (see `is_background_mask`, `object_candidate`). ABO photos that show the meshes of
+  several gallery entries are not segmented (see `abo_items`).
 
 For every photo, the step:
 
@@ -67,12 +69,14 @@ RESULT_COLUMNS = [
     "category",
     "status",  # done, skipped (mask existed), failed (see message)
     "verdict",  # detector only: kept or removed
-    "reason",  # why the photo was removed: no_detection, close_up, box_too_small, mask_too_small, mask_too_large
+    "reason",  # why the photo was removed: no_detection, background_mask, close_up, box_too_small, mask_too_small,
+    #            mask_too_large
     "box",  # "x0 y0 x1 y1" in photo pixels
     "detector_score",  # confidence of the box
     "edges_touched",  # photo edges that the box touches (0 to 4)
     "sam_score",  # SAM's own estimate of the mask quality
     "mask_area",  # share of the photo covered by the mask
+    "mask_repaired",  # detector only: 1 if SAM's mask was the background and a candidate replaced it
     "iou",  # against the reference mask
     "iou_edge_tolerant",  # the same, without the pixels near the reference edge
     "message",
@@ -211,6 +215,32 @@ def cleaning_verdict(
     return KEPT, "", ""
 
 
+def is_background_mask(white_share: float, coverage: float, background_cfg: dict) -> bool:
+    """True if a mask is the white background of a product photo instead of the object.
+
+    The mask is mostly near-white (`white_share_above`) and covers little of the coloured pixels in
+    the box (`coverage_below`); see `segment.background_measures`.
+    """
+    return white_share >= background_cfg["white_share_above"] and coverage < background_cfg["coverage_below"]
+
+
+def object_candidate(image: np.ndarray, box, candidates: list, background_cfg: dict):
+    """Return the SAM candidate that shows the object, or None if no candidate does.
+
+    A candidate shows the object if its white share is below `repair_white_share_below` and it covers
+    at least `repair_coverage_above` of the coloured pixels in the box. Of those, the candidate with the
+    highest coverage wins. SAM's own scores are not used: SAM often rates a clean mask of the white
+    background higher than the mask of the object.
+    """
+    best, best_coverage = None, -1.0
+    for candidate in candidates:
+        white_share, coverage = segment.background_measures(image, candidate.mask, box, background_cfg["near_white_level"])
+        if white_share < background_cfg["repair_white_share_below"] and coverage >= background_cfg["repair_coverage_above"]:
+            if coverage > best_coverage:
+                best, best_coverage = candidate, coverage
+    return best
+
+
 def segment_photo(item: PhotoItem, target: Path, segmenter, detector, segment_cfg: dict, prompt: str) -> dict:
     """Make and save the mask of one photo; return its results row (see RESULT_COLUMNS)."""
     row = {column: "" for column in RESULT_COLUMNS}
@@ -234,8 +264,21 @@ def segment_photo(item: PhotoItem, target: Path, segmenter, detector, segment_cf
     edges = segment.edges_touched(box, width, height)
     row.update(box=" ".join(f"{v:.1f}" for v in box), edges_touched=edges)
 
-    # 2. The mask.
-    result = segmenter.mask_from_box(image, box)
+    # 2. The mask. For a detected photo, SAM also returns its three candidates: if its mask is the
+    # white background of a product photo, a candidate that shows the object replaces it.
+    background = False
+    if prompt == "reference_box":
+        result = segmenter.mask_from_box(image, box)
+    else:
+        result, candidates = segmenter.mask_with_candidates(image, box)
+        background_cfg = segment_cfg["cleaning"]["background"]
+        if is_background_mask(*segment.background_measures(image, result.mask, box, background_cfg["near_white_level"]), background_cfg):
+            repaired = object_candidate(image, box, candidates, background_cfg)
+            if repaired is None:
+                background = True  # removed below; the background mask is saved for the review
+            else:
+                result = repaired
+                row["mask_repaired"] = 1
     segment.save_mask(result.mask, target)
     area = float(result.mask.mean())
     row.update(sam_score=round(result.score, 4), mask_area=round(area, 4))
@@ -245,6 +288,8 @@ def segment_photo(item: PhotoItem, target: Path, segmenter, detector, segment_cf
         band = segment.edge_band(reference, segment.edge_band_width(reference, segment_cfg["check"]["edge_band_fraction"]))
         row.update(iou=round(segment.mask_iou(result.mask, reference), 4),
                    iou_edge_tolerant=round(segment.mask_iou(result.mask, reference, ignore=band), 4))
+    elif background:
+        row.update(verdict=REMOVED, reason="background_mask", message="SAM's mask and its candidates show the background")
     else:
         verdict, reason, detail = cleaning_verdict(box, width, height, area, segment_cfg["cleaning"])
         row.update(verdict=verdict, reason=reason, message=detail)
@@ -296,6 +341,7 @@ def _summary(rows: list[dict]) -> dict:
     verdicts = Counter(r["verdict"] for r in rows if r["verdict"])
     if verdicts:
         summary["verdicts"] = dict(verdicts)
+        summary["masks_repaired"] = sum(str(r.get("mask_repaired", "")) == "1" for r in rows)
         summary["removed_because"] = dict(Counter(r["reason"] for r in rows if r["verdict"] == REMOVED))
     return summary
 

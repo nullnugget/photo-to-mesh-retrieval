@@ -170,6 +170,21 @@ class Segmenter:
         inputs, features = self._encode(_as_rgb_array(image), input_boxes=[[[float(v) for v in box]]])
         return {choice: self._choose(inputs, features, choice) for choice in BOX_MASK_CHOICES}
 
+    def mask_with_candidates(
+        self, image: np.ndarray | Image.Image, box: tuple[float, float, float, float]
+    ) -> tuple[MaskResult, list[MaskResult]]:
+        """Return the mask of the settings' choice and SAM's three candidate masks, from one encoding.
+
+        SAM's mask decoder has two output modes: one mask (its best guess), or three masks for the
+        readings of an ambiguous prompt (typically the whole object, a part, a smaller part). The
+        candidates let a later check replace a wrong mask (for example the white background of a
+        product photo) without encoding the photo again; the extra decoding takes about 0.01 s.
+        """
+        inputs, features = self._encode(_as_rgb_array(image), input_boxes=[[[float(v) for v in box]]])
+        masks, scores = self._decode(inputs, features, multimask=True)
+        candidates = [MaskResult(mask, float(score)) for mask, score in zip(masks, scores)]
+        return self._choose(inputs, features, self.box_mask), candidates
+
     def mask_from_points(
         self, image: np.ndarray | Image.Image, points: list[tuple[float, float]], labels: list[int] | None = None
     ) -> MaskResult:
@@ -271,6 +286,28 @@ def mask_iou(mask: np.ndarray, reference: np.ndarray, ignore: np.ndarray | None 
         mask, reference = mask & ~ignore, reference & ~ignore
     union = np.count_nonzero(mask | reference)
     return 1.0 if union == 0 else np.count_nonzero(mask & reference) / union
+
+
+def background_measures(
+    image: np.ndarray, mask: np.ndarray, box: tuple[float, float, float, float], near_white_level: int = 235
+) -> tuple[float, float]:
+    """Return (white share, object coverage) of a mask, for photos with a white background.
+
+    In a white-background product photo, nearly every near-white pixel in the box is background and
+    nearly every coloured pixel is the object. So:
+    - white share = of the mask's pixels, the share that is near-white (all three colour values at
+      least `near_white_level`). About 1.0 for a mask of the background; low for the object.
+    - object coverage = of the coloured (not near-white) pixels inside the box, the share that the
+      mask includes. About 0.0 for a mask of the background; high for the object.
+    A white object (a white cabinet) has a high white share, but its mask still covers its coloured
+    edges, handles, and shadows, so its object coverage stays high.
+    Empty mask: white share 0.0. No coloured pixel in the box: object coverage 1.0.
+    """
+    near_white = image.min(axis=2) >= near_white_level
+    coloured_in_box = box_mask(mask.shape, box) & ~near_white
+    white_share = float(near_white[mask].mean()) if mask.any() else 0.0
+    coverage = float(mask[coloured_in_box].mean()) if coloured_in_box.any() else 1.0
+    return white_share, coverage
 
 
 def edge_band(mask: np.ndarray, width: int) -> np.ndarray:

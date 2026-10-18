@@ -66,6 +66,12 @@ segment:
                                      # The box, not the mask: a floor lamp spans the photo, but its pole covers 3 %
     min_mask_area: 0.01              # the mask must cover at least 1 % of the photo (SAM found something) ...
     max_mask_area: 0.90              # ... and at most 90 % (a swatch or texture that fills the frame)
+    background:                      # SAM sometimes masks the white background of a product photo instead of the object
+      near_white_level: 235          # a pixel is near-white if all three colour values are at least this (of 255)
+      white_share_above: 0.8         # background mask: at least 80 % of its pixels are near-white ...
+      coverage_below: 0.5            # ... and it covers less than half of the coloured pixels in the box
+      repair_white_share_below: 0.5  # a SAM candidate replaces it if under 50 % of its pixels are near-white ...
+      repair_coverage_above: 0.6     # ... and it covers at least 60 % of the coloured pixels; else background_mask
 
   # Quality check against reference masks (Pix3D).
   check:

@@ -21,6 +21,8 @@ Usage (from the repository root):
     python scripts/03_make_queries.py --dataset pix3d --mini        # quick check, a few seconds
     python scripts/03_make_queries.py --dataset pix3d --overwrite   # make the query images again
     python scripts/03_make_queries.py --dataset pix3d --set data.crop_margin=0.05
+    python scripts/03_make_queries.py --dataset abo                 # after the ABO segment step (kept photos)
+    python scripts/03_make_queries.py --dataset abo --mini          # from the segment step's mini outputs
 """
 
 import argparse

@@ -11,6 +11,16 @@ For every photo of the dataset, this step:
 Photos that cannot be prepared (in Pix3D: two photos whose mask belongs to another image) are
 reported and left out of the catalog and the splits.
 
+Where the photos, masks, and meshes come from:
+
+- Pix3D: `pix3d.json`; the masks come with the dataset; one mesh row per model folder.
+- ABO: the photos that the segment step kept (`data/derived/masks/abo_segment_results.csv`, verdict
+  "kept"), with their SAM masks. Each photo's mesh is the gallery entry of its geometry group
+  (`catalog_abo_meshes.photo_entry`), so that colour variants of one geometry are one answer. The mesh
+  rows are the ABO rows that the catalog stage of the download step wrote, all of them: a mesh without
+  a kept photo stays in the gallery (a distractor that no photo asks for, like a new product), and its
+  `num_photos` is 0. ABO photos have no truncated or occluded flags (the cells stay empty).
+
 Outputs (normal run):
     data/derived/queries/<dataset>/<category>/<name>.png    query images
     data/derived/catalog/queries.csv, meshes.csv            catalog (the rows of this dataset replaced)
@@ -18,10 +28,8 @@ Outputs (normal run):
     data/splits/<dataset>/<split name>.json                 split files
 
 A mini run prepares only 5 photos per category and writes all outputs to
-test_outputs/make_queries_mini/ instead, so that the real outputs are not touched.
-
-Only Pix3D is supported now. ABO is added when its photos and masks exist: it needs one more
-function that lists its photos and meshes (like `_pix3d_items`); the rest of the step is shared.
+test_outputs/make_queries_mini/ instead, so that the real outputs are not touched. For ABO, the mini
+run takes its photos from the mini outputs of the segment step (`02_segment_photos.py --mini`).
 """
 
 import json
@@ -31,21 +39,47 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src import paths
-from src.data import catalog, pix3d, splits
+from src.data import abo, catalog, pix3d, splits
+from src.pipeline import catalog_abo_meshes, download_abo, segment_photos
 from src.preprocess.queries import FAILED, QueryJob, make_query_images
 
-DATASETS = ("pix3d",)
+DATASETS = ("pix3d", "abo")
 MINI_PHOTOS_PER_CATEGORY = 5
+
+
+@dataclass(frozen=True)
+class QueryPhoto:
+    """One photo for the query step (the fields that the step reads; `pix3d.PhotoRecord` has them too)."""
+
+    query_id: str
+    category: str
+    mesh_id: str  # the gallery entry that the photo shows
+    photo_path: str  # relative to the repository root
+    mask_path: str  # relative to the repository root
+    truncated: bool | None  # None = unknown (ABO)
+    occluded: bool | None
+    slightly_occluded: bool | None
+
+
+@dataclass(frozen=True)
+class GalleryMesh:
+    """One gallery entry for the query step (the fields that the step reads; `pix3d.MeshRecord` has them too)."""
+
+    mesh_id: str
+    category: str
+    mesh_path: str
+    num_mesh_variants: int
 
 
 @dataclass
 class DatasetItems:
     """What the query step needs from one dataset."""
 
-    photos: list  # one record per photo (fields as in pix3d.PhotoRecord)
-    meshes: list  # one record per mesh entry (fields as in pix3d.MeshRecord)
+    photos: list  # one record per photo (fields as in QueryPhoto)
+    meshes: list  # one record per mesh entry (fields as in GalleryMesh)
     photos_listed: int  # number of photos in the dataset annotations, before any selection
     fixed_test: list[str] | None  # query ids of a fixed seen_meshes test part, or None
+    keep_meshes_without_photos: bool = False  # True = every mesh gets a catalog row, also with 0 photos
 
 
 def output_dirs(mini: bool) -> dict[str, Path]:
@@ -82,7 +116,39 @@ def _pix3d_items(data_cfg: dict, mini: bool) -> DatasetItems:
     return DatasetItems(photos, pix3d.mesh_records(annotations), len(annotations), fixed_test)
 
 
-_ITEM_FUNCTIONS = {"pix3d": _pix3d_items}
+def _abo_items(data_cfg: dict, mini: bool) -> DatasetItems:
+    """List the ABO photos that the segment step kept, their gallery entries, and all ABO meshes."""
+    _, photos = abo.read_manifest(paths.ABO_MANIFEST_DIR)
+    groups = catalog_abo_meshes.read_geometry_groups(paths.ABO_MANIFEST_DIR)
+    by_id = {p.image_id: p for p in photos}
+    meshes = [m for m in catalog.read_table(paths.MESHES_CSV) if m["dataset"] == abo.DATASET]
+    category_of = {m["mesh_id"]: m["category"] for m in meshes}
+
+    masks_root = segment_photos.output_root(mini)
+    results = catalog.read_table(segment_photos.results_file(abo.DATASET, masks_root))
+    records = []
+    for row in results:
+        if row["verdict"] != segment_photos.KEPT:
+            continue
+        photo = by_id[row["photo_id"].split("/")[-1]]
+        entry = catalog_abo_meshes.photo_entry(photo, groups)  # never None: the segment step skipped those photos
+        item = segment_photos.PhotoItem(row["photo_id"], photo.category, "", None, f"{photo.image_id}.png")
+        records.append(QueryPhoto(
+            query_id=f"{abo.DATASET}/{category_of[entry]}/{photo.image_id}",
+            category=category_of[entry],
+            mesh_id=entry,
+            photo_path=str(download_abo.photo_file(paths.ABO_IMAGES_DIR, photo).relative_to(paths.ROOT)),
+            mask_path=str(segment_photos.mask_file(masks_root, abo.DATASET, item).relative_to(paths.ROOT)),
+            truncated=None, occluded=None, slightly_occluded=None,
+        ))
+    records.sort(key=lambda r: r.query_id)
+    if mini:
+        records = _first_per_category(records, MINI_PHOTOS_PER_CATEGORY)
+    gallery = [GalleryMesh(m["mesh_id"], m["category"], m["mesh_path"], int(m["num_mesh_variants"])) for m in meshes]
+    return DatasetItems(records, gallery, len(photos), fixed_test=None, keep_meshes_without_photos=True)
+
+
+_ITEM_FUNCTIONS = {"pix3d": _pix3d_items, "abo": _abo_items}
 
 
 def _make_splits(dataset: str, query_rows: list[dict], split_cfg: dict, fixed_test: list[str] | None) -> list[dict]:
@@ -174,7 +240,7 @@ def run(dataset: str, cfg: dict, mini: bool = False, overwrite: bool = False, wo
             "num_mesh_variants": m.num_mesh_variants,
         }
         for m in items.meshes
-        if photos_per_mesh[m.mesh_id] > 0
+        if photos_per_mesh[m.mesh_id] > 0 or items.keep_meshes_without_photos
     ]
     catalog.replace_dataset_rows(out["catalog"] / paths.QUERIES_CSV.name, query_rows, dataset, catalog.QUERY_COLUMNS)
     catalog.replace_dataset_rows(out["catalog"] / paths.MESHES_CSV.name, mesh_rows, dataset, catalog.MESH_COLUMNS)

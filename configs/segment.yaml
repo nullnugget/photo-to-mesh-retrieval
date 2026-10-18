@@ -29,6 +29,18 @@ segment:
       processor_config.json: 95
     box_mask: single                 # mask for a box prompt: "single" (SAM's one-mask output) or "largest"
                                      # (the largest of SAM's three candidates); see src/preprocess/segment.py
+  segmenter_large:                   # SAM 2.1 large (224 M parameters, 5 x small): candidate for better whole-object
+                                     # masks; compared with small in notebooks/06_mask_variants.py. Not downloaded by
+                                     # default: python scripts/00_download_weights.py --models segmenter_large
+    hub_repo: facebook/sam2.1-hiera-large
+    revision: 665f8e2ad61cf5f53d65644ff27c8ee525124610
+    folder: weights/sam2/sam2.1-hiera-large
+    files:
+      config.json: 5705
+      model.safetensors: 897897416
+      preprocessor_config.json: 683
+      processor_config.json: 95
+    box_mask: single
 
   # Detector text for the classes whose folder name is not plain English. Other classes use their
   # name with spaces for underscores ("ceiling_light" -> "ceiling light."). To be checked on the ABO photos.

@@ -108,3 +108,31 @@ def test_detector_finds_the_chair_of_a_pix3d_photo():
     rx0, ry0, rx1, ry1 = (int(v) for v in segment.box_of_mask(reference))
     expected[ry0:ry1, rx0:rx1] = True
     assert segment.mask_iou(found, expected) > 0.8  # the detected box matches the box of the reference mask
+
+
+@pytest.mark.weights
+def test_one_encoding_gives_the_same_masks_as_separate_calls():
+    photo = np.full((240, 320, 3), 255, np.uint8)
+    photo[60:180, 80:240] = (40, 40, 40)
+    segmenter = segment.Segmenter(load_config()["segment"]["segmenter"], device="cpu")
+    box = (74, 54, 246, 186)
+    both = segmenter.masks_for_each_choice(photo, box)
+    for choice in segment.BOX_MASK_CHOICES:
+        alone = segmenter.mask_from_box(photo, box, choice=choice)
+        assert (both[choice].mask == alone.mask).all()
+        assert both[choice].score == pytest.approx(alone.score, abs=1e-3)  # float rounding differs slightly
+
+
+def test_grow_mask_adds_a_ring_and_stays_in_the_box():
+    mask = np.zeros((20, 20), bool)
+    mask[8:12, 8:12] = True
+    grown = segment.grow_mask(mask, 2)
+    assert grown[6:14, 6:14].all() and grown.sum() == 64  # 4 x 4 grown by 2 on each side = 8 x 8
+    clipped = segment.grow_mask(mask, 2, box=(8, 8, 12, 14))  # the box allows growth only downwards
+    assert clipped.sum() == 4 * 6 and clipped[8:14, 8:12].all()
+    assert (segment.grow_mask(mask, 0) == mask).all()
+
+
+def test_box_mask_covers_the_box_only():
+    inside = segment.box_mask((10, 20), (2, 3, 7, 9))
+    assert inside.sum() == 5 * 6 and inside[3:9, 2:7].all()

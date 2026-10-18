@@ -106,30 +106,63 @@ class Segmenter:
         # the same weights; transformers prints a warning about the type, and every weight loads.
         self.model = Sam2Model.from_pretrained(folder, local_files_only=True).to(self.device).eval()
 
-    @torch.inference_mode()
-    def _candidates(self, image: np.ndarray, multimask: bool, **prompt) -> tuple[np.ndarray, np.ndarray]:
-        """Run SAM once. Return the masks (k, H, W) bool and their predicted quality (k,).
+    # SAM works in two stages. The image encoder turns the photo into image features (the slow
+    # part, about 90 % of the time). The mask decoder turns the features and a prompt into masks (fast).
+    # `_encode` runs the first stage once per photo; `_decode` can then run several times on it.
 
-        k is 1 with multimask=False, else 3. `prompt` holds the processor's prompt arguments
-        (input_boxes, or input_points and input_labels), in photo pixels.
+    @torch.inference_mode()
+    def _encode(self, image: np.ndarray, **prompt) -> tuple[dict, list[torch.Tensor]]:
+        """Prepare the photo and the prompt, and run the image encoder.
+
+        `prompt` holds the processor's prompt arguments (input_boxes, or input_points and
+        input_labels), in photo pixels. Returns the processor output and the image features.
         """
         inputs = self.processor(images=image, return_tensors="pt", **prompt).to(self.device)
-        outputs = self.model(**inputs, multimask_output=multimask)
+        return inputs, self.model.get_image_embeddings(inputs["pixel_values"])
+
+    @torch.inference_mode()
+    def _decode(self, inputs: dict, features: list[torch.Tensor], multimask: bool) -> tuple[np.ndarray, np.ndarray]:
+        """Run the mask decoder. Return the masks (k, H, W) bool and their predicted quality (k,).
+
+        k is 1 with multimask=False, else 3.
+        """
+        prompt = {key: inputs[key] for key in ("input_boxes", "input_points", "input_labels") if key in inputs}
+        outputs = self.model(image_embeddings=features, multimask_output=multimask, **prompt)
         # SAM predicts masks at 256 x 256; post_process_masks scales them to the photo size and
         # turns them into True/False at the threshold 0 of SAM's mask values.
         masks = self.processor.post_process_masks(outputs.pred_masks.cpu(), inputs["original_sizes"].cpu())[0]
         return masks[0].numpy().astype(bool), outputs.iou_scores[0, 0].float().cpu().numpy()
 
-    def mask_from_box(self, image: np.ndarray | Image.Image, box: tuple[float, float, float, float]) -> MaskResult:
-        """Return the mask of the object in `box` = (x0, y0, x1, y1), in photo pixels."""
-        image = _as_rgb_array(image)
-        prompt = {"input_boxes": [[[float(v) for v in box]]]}  # one photo, one box
-        if self.box_mask == "single":
-            masks, scores = self._candidates(image, multimask=False, **prompt)
+    def _choose(self, inputs: dict, features: list[torch.Tensor], choice: str) -> MaskResult:
+        """Return the mask of one box mask choice (see BOX_MASK_CHOICES)."""
+        if choice == "single":
+            masks, scores = self._decode(inputs, features, multimask=False)
             return MaskResult(masks[0], float(scores[0]))
-        masks, scores = self._candidates(image, multimask=True, **prompt)
+        masks, scores = self._decode(inputs, features, multimask=True)
         best = int(masks.sum(axis=(1, 2)).argmax())  # "largest": the candidate with the most pixels
         return MaskResult(masks[best], float(scores[best]))
+
+    def mask_from_box(
+        self, image: np.ndarray | Image.Image, box: tuple[float, float, float, float], choice: str | None = None
+    ) -> MaskResult:
+        """Return the mask of the object in `box` = (x0, y0, x1, y1), in photo pixels.
+
+        `choice` overrides the mask choice of the settings for this call (see BOX_MASK_CHOICES).
+        """
+        choice = choice or self.box_mask
+        if choice not in BOX_MASK_CHOICES:
+            raise ValueError(f"choice must be one of {BOX_MASK_CHOICES}, got {choice!r}")
+        inputs, features = self._encode(_as_rgb_array(image), input_boxes=[[[float(v) for v in box]]])  # one photo, one box
+        return self._choose(inputs, features, choice)
+
+    def masks_for_each_choice(self, image: np.ndarray | Image.Image, box: tuple[float, float, float, float]) -> dict[str, MaskResult]:
+        """Return the mask of every box mask choice, {"single": ..., "largest": ...}.
+
+        The photo is encoded only once, so this is almost as fast as one `mask_from_box` call. For
+        experiments that compare the choices.
+        """
+        inputs, features = self._encode(_as_rgb_array(image), input_boxes=[[[float(v) for v in box]]])
+        return {choice: self._choose(inputs, features, choice) for choice in BOX_MASK_CHOICES}
 
     def mask_from_points(
         self, image: np.ndarray | Image.Image, points: list[tuple[float, float]], labels: list[int] | None = None
@@ -142,11 +175,12 @@ class Segmenter:
         """
         image = _as_rgb_array(image)
         labels = labels or [1] * len(points)
-        masks, scores = self._candidates(
-            image, multimask=True,
+        inputs, features = self._encode(
+            image,
             input_points=[[[[float(x), float(y)] for x, y in points]]],  # one photo, one object, n points
             input_labels=[[list(labels)]],
         )
+        masks, scores = self._decode(inputs, features, multimask=True)
         good = np.flatnonzero(scores >= scores.max() - POINT_SCORE_MARGIN)
         best = int(good[masks[good].sum(axis=(1, 2)).argmax()])
         return MaskResult(masks[best], float(scores[best]))
@@ -250,6 +284,37 @@ def edge_band(mask: np.ndarray, width: int) -> np.ndarray:
 def edge_band_width(mask: np.ndarray, fraction: float) -> int:
     """Return the band width in pixels for a photo: `fraction` of its longer side, at least 1."""
     return max(1, round(fraction * max(mask.shape)))
+
+
+def grow_mask(mask: np.ndarray, pixels: int, box: tuple[float, float, float, float] | None = None) -> np.ndarray:
+    """Return the mask grown by `pixels` in every direction (a square neighbourhood), optionally kept inside `box`.
+
+    A grown mask keeps a thin ring of real background around the object. If the mask misses a thin
+    part (a leg, the edge of a cushion), the grown mask often covers it again. Keeping the result inside
+    the box stops the growth from adding background beyond the object's extent.
+    The growth uses a running maximum along the rows and then along the columns, so its cost does not
+    depend on `pixels`.
+    """
+    if pixels <= 0:
+        grown = mask.copy()
+    else:
+        size = 2 * pixels + 1
+        grown = ndimage.maximum_filter1d(mask.astype(np.uint8), size, axis=0)
+        grown = ndimage.maximum_filter1d(grown, size, axis=1).astype(bool)
+    if box is not None:
+        grown &= box_mask(mask.shape, box)
+    return grown
+
+
+def box_mask(shape: tuple[int, int], box: tuple[float, float, float, float]) -> np.ndarray:
+    """Return a mask that is True inside `box` = (x0, y0, x1, y1) and False outside, of size `shape` = (H, W).
+
+    Used as the "mask" of a query that keeps all pixels of the box (the background inside the box too).
+    """
+    x0, y0, x1, y1 = (int(round(v)) for v in box)
+    inside = np.zeros(shape, dtype=bool)
+    inside[max(y0, 0) : max(y1, 0), max(x0, 0) : max(x1, 0)] = True
+    return inside
 
 
 # ---------------------------------------------------------------------------------------------

@@ -10,6 +10,7 @@ The logic is in `src/pipeline/download_weights.py`.
 Usage (from the repository root):
     python scripts/00_download_weights.py                    # both models
     python scripts/00_download_weights.py --models segmenter # only SAM 2.1
+    python scripts/00_download_weights.py --models segmenter_large   # SAM 2.1 large (0.9 GB), for comparison
 """
 
 import argparse
@@ -25,7 +26,7 @@ from src.pipeline import download_weights  # noqa: E402
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--models", nargs="+", choices=download_weights.MODELS, default=list(download_weights.MODELS), help="models to download")
+    parser.add_argument("--models", nargs="+", choices=download_weights.MODELS, default=list(download_weights.DEFAULT_MODELS), help="models to download")
     add_config_args(parser)
     args = parser.parse_args()
     download_weights.run(config_from_args(args), models=tuple(args.models))

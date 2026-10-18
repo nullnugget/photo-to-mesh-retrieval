@@ -1,6 +1,7 @@
 """The weights download step: the pretrained detector and segmenter, from the Hugging Face Hub.
 
-For each model in `configs/segment.yaml` (`segment.detector`, `segment.segmenter`), this step
+For each chosen model in `configs/segment.yaml` (by default `segment.detector` and `segment.segmenter`;
+`segment.segmenter_large` only on request), this step
 downloads the listed files from the model repository at the fixed commit ("revision") into the
 model's folder under `weights/`, and checks the size of every file. Later code loads the models
 only from these folders, so nothing is downloaded while the pipeline runs, and the exact weights
@@ -21,7 +22,8 @@ from src import paths
 from src.data.http import Fetcher
 
 HUB_URL = "https://huggingface.co"
-MODELS = ("detector", "segmenter")
+MODELS = ("detector", "segmenter", "segmenter_large")  # every model that can be downloaded
+DEFAULT_MODELS = ("detector", "segmenter")  # the models the pipeline uses now
 
 
 def file_url(hub_repo: str, revision: str, name: str) -> str:
@@ -52,7 +54,7 @@ def download_model(fetcher: Fetcher, model_cfg: dict) -> dict:
     return {"folder": str(folder.relative_to(paths.ROOT)), "downloaded": downloaded, "present": present, "bytes": total}
 
 
-def run(cfg: dict, models: tuple[str, ...] = MODELS) -> dict:
+def run(cfg: dict, models: tuple[str, ...] = DEFAULT_MODELS) -> dict:
     """Download the weights of the chosen models (`cfg["segment"]`), and return a report."""
     fetcher = Fetcher(retries=5, timeout=120.0)
     report = {}

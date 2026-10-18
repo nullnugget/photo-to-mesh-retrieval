@@ -196,6 +196,8 @@ dependencies:
       - fonttools==4.65.0
       - fsspec==2026.9.0
       - h11==0.16.0
+      - hf-xet==1.7.0
+      - huggingface-hub==0.36.2
       - iniconfig==2.3.1
       - itsdangerous==2.2.0
       - jedi==0.19.2
@@ -224,14 +226,18 @@ dependencies:
       - python-multipart==0.0.32
       - pytz==2026.3.post1
       - pyzmq==27.2.0
+      - regex==2026.9.29
+      - safetensors==0.8.0
       - scikit-learn==1.7.2
       - scipy==1.15.3
       - six==1.17.0
       - starlette==1.6.0
       - threadpoolctl==3.6.0
+      - tokenizers==0.22.2
       - tomli==2.5.0
       - tomlkit==0.15.1
       - torchmetrics==1.9.0
+      - transformers==4.57.6
       - tzdata==2026.4
       - ultralytics==8.4.156
       - ultralytics-thop==2.1.6

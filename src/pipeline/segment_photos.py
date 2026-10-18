@@ -1,0 +1,346 @@
+"""The segment step: an object mask for every photo of one dataset, made with SAM 2.1.
+
+Two ways to get the box that SAM needs (`prompt`):
+
+- "reference_box": the box around the photo's reference mask (Pix3D has hand-made masks). This
+  is the quality check of SAM (how close are SAM's masks to the reference masks?) and the input of
+  the end-to-end test (retrieval with SAM masks, as in the demo, where the user draws the box).
+- "detector": Grounding DINO finds the box from the class name (ABO photos, which have no masks).
+  Then the cleaning rules decide whether the photo is kept (see `cleaning_verdict`).
+
+For every photo, the step:
+
+1. reads the photo, and gets the box (from the reference mask, or the most confident detection);
+2. makes the SAM mask from the box, and saves it in the Pix3D format (0 = background, 255 = object);
+3. writes one row of results: the box, SAM's quality estimate, the mask area, and
+   - with a reference mask: the IoU against it, plain and edge-tolerant (see `segment.edge_band`);
+   - with the detector: its confidence and the cleaning verdict (kept or removed, and why).
+
+Which photos (Pix3D): all photos of the catalog, or only some parts of a split, for example the
+train and val parts of seen_meshes (the 8,557 photos that may be used for tuning; the test photos
+are kept for the final result). ABO: all photos of the download manifest.
+
+Safe to stop and start again: masks that exist are skipped (and keep their earlier results row).
+A photo without a detection has no mask file, so a new run asks the detector again (it is quick).
+The settings are saved in `<dataset>_segment_config.yaml`; a run with other settings stops with an
+error instead of mixing masks, unless `overwrite=True` (then every mask is made again).
+
+Outputs (normal run):
+    data/derived/masks/<dataset>/<category>/<name>.png      the masks
+    data/derived/masks/<dataset>_segment_config.yaml        the settings that made them
+    data/derived/masks/<dataset>_segment_results.csv        one row per photo (see RESULT_COLUMNS)
+    data/derived/masks/<dataset>_segment_report.json        totals of all rows
+
+A mini run segments 3 photos per category into `test_outputs/segment_mini/`.
+"""
+
+import csv
+import json
+import time
+from collections import Counter
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+from PIL import Image
+from tqdm import tqdm
+
+from src import paths
+from src.config import load_yaml, save_config
+from src.data import abo
+from src.data.catalog import read_table
+from src.data.splits import load_split
+from src.pipeline import download_abo
+from src.preprocess import segment
+
+PROMPTS = ("reference_box", "detector")
+MINI_PHOTOS_PER_CATEGORY = 3
+DONE, SKIPPED, FAILED = "done", "skipped", "failed"
+KEPT, REMOVED = "kept", "removed"
+# One row per photo in <dataset>_segment_results.csv. Cells that do not apply stay empty (for
+# example the IoU columns without a reference mask, or the detector columns with a reference box).
+RESULT_COLUMNS = [
+    "photo_id",  # "pix3d/chair/0001" (the query id) or "abo/<class>/<image id>"
+    "category",
+    "status",  # done, skipped (mask existed), failed (see message)
+    "verdict",  # detector only: kept or removed
+    "reason",  # why the photo was removed: no_detection, close_up, mask_too_small, mask_too_large
+    "box",  # "x0 y0 x1 y1" in photo pixels
+    "detector_score",  # confidence of the box
+    "edges_touched",  # photo edges that the box touches (0 to 4)
+    "sam_score",  # SAM's own estimate of the mask quality
+    "mask_area",  # share of the photo covered by the mask
+    "iou",  # against the reference mask
+    "iou_edge_tolerant",  # the same, without the pixels near the reference edge
+    "message",
+]
+
+
+class SegmentSettingsChanged(RuntimeError):
+    """The existing masks were made with other settings (see `<dataset>_segment_config.yaml`)."""
+
+
+@dataclass
+class PhotoItem:
+    """One photo to segment."""
+
+    photo_id: str
+    category: str
+    photo_path: str  # relative to the repository root
+    reference_mask_path: str | None  # the dataset's own mask, or None
+    mask_name: str  # file name of the SAM mask inside <masks>/<dataset>/<category>/
+
+
+def output_root(mini: bool) -> Path:
+    """Return the folder of the masks: the real one, or a test folder for a mini run."""
+    return paths.TEST_OUTPUTS_DIR / "segment_mini" / "masks" if mini else paths.MASKS_DIR
+
+
+def mask_file(root: Path, dataset: str, item: PhotoItem) -> Path:
+    """Return the SAM mask file of one photo, for example <root>/pix3d/chair/0001.png."""
+    return root / dataset / item.category / item.mask_name
+
+
+def results_file(dataset: str, root: Path = paths.MASKS_DIR) -> Path:
+    return root / f"{dataset}_segment_results.csv"
+
+
+def report_file(dataset: str, root: Path = paths.MASKS_DIR) -> Path:
+    return root / f"{dataset}_segment_report.json"
+
+
+def config_file(dataset: str, root: Path = paths.MASKS_DIR) -> Path:
+    return root / f"{dataset}_segment_config.yaml"
+
+
+# ---------------------------------------------------------------------------------------------
+# The photos of each dataset
+# ---------------------------------------------------------------------------------------------
+
+
+def pix3d_items(split: str | None = None, parts: list[str] | None = None) -> list[PhotoItem]:
+    """The Pix3D photos of the catalog; with `split` and `parts`, only the photos of those parts."""
+    rows = [r for r in read_table(paths.QUERIES_CSV) if r["dataset"] == "pix3d"]
+    if split:
+        split_parts = load_split(paths.split_file("pix3d", split))["parts"]
+        wanted = {query_id for part in parts or ["train", "val", "test"] for query_id in split_parts[part]}
+        rows = [r for r in rows if r["query_id"] in wanted]
+    return [
+        PhotoItem(r["query_id"], r["category"], r["photo_path"], r["mask_path"], Path(r["photo_path"]).stem + ".png")
+        for r in rows
+    ]
+
+
+def abo_items() -> list[PhotoItem]:
+    """The ABO photos of the download manifest (they have no reference masks)."""
+    _, photos = abo.read_manifest(paths.ABO_MANIFEST_DIR)
+    return [
+        PhotoItem(
+            f"{abo.DATASET}/{p.category}/{p.image_id}", p.category,
+            str(download_abo.photo_file(paths.ABO_IMAGES_DIR, p).relative_to(paths.ROOT)), None, f"{p.image_id}.png",
+        )
+        for p in photos
+    ]
+
+
+def _first_per_category(items: list[PhotoItem], count: int) -> list[PhotoItem]:
+    taken: Counter = Counter()
+    return [i for i in items if (taken.update([i.category]) or taken[i.category] <= count)]
+
+
+# ---------------------------------------------------------------------------------------------
+# One photo
+# ---------------------------------------------------------------------------------------------
+
+
+def cleaning_verdict(edges: int, mask_area: float, cleaning_cfg: dict) -> tuple[str, str, str]:
+    """Apply the cleaning rules to a detected photo; return (verdict, reason code, detail).
+
+    The rules (`segment.cleaning`; the detector threshold is applied before):
+    - the box touches at most `max_edges_touched` photo edges (else probably a close-up of a detail);
+    - the mask covers between `min_mask_area` and `max_mask_area` of the photo.
+    """
+    if edges > cleaning_cfg["max_edges_touched"]:
+        return REMOVED, "close_up", f"the box touches {edges} photo edges"
+    if mask_area < cleaning_cfg["min_mask_area"]:
+        return REMOVED, "mask_too_small", f"mask area {mask_area:.3f}"
+    if mask_area > cleaning_cfg["max_mask_area"]:
+        return REMOVED, "mask_too_large", f"mask area {mask_area:.3f}"
+    return KEPT, "", ""
+
+
+def segment_photo(item: PhotoItem, target: Path, segmenter, detector, segment_cfg: dict, prompt: str) -> dict:
+    """Make and save the mask of one photo; return its results row (see RESULT_COLUMNS)."""
+    row = {column: "" for column in RESULT_COLUMNS}
+    row.update(photo_id=item.photo_id, category=item.category, status=DONE)
+    with Image.open(paths.resolve(item.photo_path)) as photo_file:
+        image = np.asarray(photo_file.convert("RGB"))
+    height, width = image.shape[:2]
+
+    # 1. The box.
+    reference = None
+    if prompt == "reference_box":
+        reference = segment.read_mask(item.reference_mask_path)
+        box = segment.box_of_mask(reference)
+    else:
+        detections = detector.detect(image, segment.prompt_text(item.category, segment_cfg.get("prompts")))
+        if not detections:
+            row.update(verdict=REMOVED, reason="no_detection")
+            return row
+        box = detections[0].box  # the most confident detection
+        row["detector_score"] = round(detections[0].score, 4)
+    edges = segment.edges_touched(box, width, height)
+    row.update(box=" ".join(f"{v:.1f}" for v in box), edges_touched=edges)
+
+    # 2. The mask.
+    result = segmenter.mask_from_box(image, box)
+    segment.save_mask(result.mask, target)
+    area = float(result.mask.mean())
+    row.update(sam_score=round(result.score, 4), mask_area=round(area, 4))
+
+    # 3. Comparison with the reference mask, or the cleaning verdict.
+    if reference is not None:
+        band = segment.edge_band(reference, segment.edge_band_width(reference, segment_cfg["check"]["edge_band_fraction"]))
+        row.update(iou=round(segment.mask_iou(result.mask, reference), 4),
+                   iou_edge_tolerant=round(segment.mask_iou(result.mask, reference, ignore=band), 4))
+    else:
+        verdict, reason, detail = cleaning_verdict(edges, area, segment_cfg["cleaning"])
+        row.update(verdict=verdict, reason=reason, message=detail)
+    return row
+
+
+# ---------------------------------------------------------------------------------------------
+# The step
+# ---------------------------------------------------------------------------------------------
+
+
+def _check_settings(record: Path, settings: dict, overwrite: bool) -> None:
+    """Stop if earlier masks were made with other settings; save the current settings."""
+    if record.exists() and not overwrite and load_yaml(record) != settings:
+        raise SegmentSettingsChanged(
+            f"{record} differs from the current settings. Run again with overwrite (all masks are made "
+            "again), or restore the settings."
+        )
+    record.parent.mkdir(parents=True, exist_ok=True)
+    save_config(settings, record)
+
+
+def _merge_results(path: Path, new_rows: list[dict]) -> list[dict]:
+    """Update the results table: a skipped photo keeps its earlier row; other photos get the new row."""
+    old = {}
+    if path.exists():
+        with open(path, newline="") as f:
+            old = {row["photo_id"]: row for row in csv.DictReader(f)}
+    merged = [old.get(row["photo_id"], row) if row["status"] == SKIPPED else row for row in new_rows]
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS)
+        writer.writeheader()
+        writer.writerows(merged)
+    return merged
+
+
+def _summary(rows: list[dict]) -> dict:
+    """Totals of the results rows: IoU statistics (reference box) or the cleaning verdicts (detector)."""
+    summary: dict = {"status": dict(Counter(r["status"] for r in rows))}
+    for column in ("iou", "iou_edge_tolerant"):
+        values = np.array([float(r[column]) for r in rows if r[column] not in ("", None)])
+        if values.size:
+            summary[column] = {
+                "median": round(float(np.median(values)), 4),
+                "mean": round(float(values.mean()), 4),
+                "share_below_0.70": round(float((values < 0.70).mean()), 4),
+                "share_below_0.90": round(float((values < 0.90).mean()), 4),
+            }
+    verdicts = Counter(r["verdict"] for r in rows if r["verdict"])
+    if verdicts:
+        summary["verdicts"] = dict(verdicts)
+        summary["removed_because"] = dict(Counter(r["reason"] for r in rows if r["verdict"] == REMOVED))
+    return summary
+
+
+def run(
+    dataset: str,
+    cfg: dict,
+    prompt: str | None = None,
+    split: str | None = None,
+    parts: list[str] | None = None,
+    mini: bool = False,
+    overwrite: bool = False,
+    device: str = "cuda",
+) -> dict:
+    """Segment the photos of one dataset, and return the report (also saved as JSON).
+
+    Args:
+        dataset: "pix3d" or "abo".
+        cfg: The merged settings; the step reads `cfg["segment"]`.
+        prompt: "reference_box" or "detector" (None = reference_box for Pix3D, detector for ABO).
+        split, parts: Pix3D only: segment only these parts of this split (for example "seen_meshes",
+            ["train", "val"]). None = all photos.
+        mini: True = 3 photos per category, into test_outputs/segment_mini/.
+        overwrite: True = make every mask again, also with changed settings.
+        device: "cuda" or "cpu".
+
+    Raises:
+        ValueError: For an unknown dataset or prompt, a reference box without reference masks, or a
+            split for ABO.
+        SegmentSettingsChanged: If earlier masks used other settings and `overwrite` is False.
+    """
+    prompt = prompt or ("reference_box" if dataset == "pix3d" else "detector")
+    if prompt not in PROMPTS:
+        raise ValueError(f"prompt must be one of {PROMPTS}, got {prompt!r}")
+    if dataset == "pix3d":
+        items = pix3d_items(split, parts)
+    elif dataset == "abo":
+        if split:
+            raise ValueError("ABO has no split files yet; segment all ABO photos")
+        if prompt == "reference_box":
+            raise ValueError("ABO photos have no reference masks; use the detector")
+        items = abo_items()
+    else:
+        raise ValueError(f"unknown dataset {dataset!r}")
+    if mini:
+        items = _first_per_category(items, MINI_PHOTOS_PER_CATEGORY)
+
+    segment_cfg = cfg["segment"]
+    root = output_root(mini)
+    _check_settings(config_file(dataset, root), {"prompt": prompt, "segment": segment_cfg}, overwrite)
+    segmenter = segment.Segmenter(segment_cfg["segmenter"], device=device)
+    detector = segment.Detector(segment_cfg["detector"], device=device) if prompt == "detector" else None
+    print(f"{dataset}: {len(items)} photos{' (mini)' if mini else ''}; box from {prompt}; "
+          f"SAM mask '{segmenter.box_mask}' -> {(root / dataset).relative_to(paths.ROOT)}")
+
+    rows = []
+    start = time.perf_counter()
+    for item in tqdm(items, desc="segment", unit="photo"):
+        target = mask_file(root, dataset, item)
+        if target.exists() and not overwrite:
+            rows.append({**{c: "" for c in RESULT_COLUMNS}, "photo_id": item.photo_id, "category": item.category, "status": SKIPPED})
+            continue
+        try:
+            rows.append(segment_photo(item, target, segmenter, detector, segment_cfg, prompt))
+        except (OSError, ValueError, RuntimeError) as error:  # an unreadable photo, an empty reference mask, out of memory
+            rows.append({**{c: "" for c in RESULT_COLUMNS}, "photo_id": item.photo_id, "category": item.category,
+                         "status": FAILED, "message": f"{type(error).__name__}: {error}"})
+
+    this_run = Counter(row["status"] for row in rows)
+    all_rows = _merge_results(results_file(dataset, root), rows)
+    report = {
+        "dataset": dataset,
+        "mini": mini,
+        "prompt": prompt,
+        "split": split,
+        "parts": parts,
+        "box_mask": segmenter.box_mask,
+        "photos": len(items),
+        "this_run": dict(this_run),
+        **_summary(all_rows),
+        "failed": [{"photo_id": r["photo_id"], "message": r["message"]} for r in all_rows if r["status"] == FAILED],
+        "seconds_this_run": round(time.perf_counter() - start, 1),
+    }
+    path = report_file(dataset, root)
+    path.write_text(json.dumps(report, indent=2) + "\n")
+    print(f"segment: this run {dict(this_run)}; "
+          + (f"IoU median {report['iou']['median']}, edge-tolerant {report['iou_edge_tolerant']['median']}; " if "iou" in report else "")
+          + (f"verdicts {report['verdicts']}; " if "verdicts" in report else "")
+          + f"{report['seconds_this_run']} s -> {path.relative_to(paths.ROOT)}")
+    return report

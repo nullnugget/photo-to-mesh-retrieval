@@ -32,8 +32,10 @@ def _(mo):
     - Full renders: run `python scripts/04_render.py --dataset pix3d` first. Mini renders: press the
       button in section 2 (in the editor), or run the script with `--mini`.
     - Then, from the repository root: `marimo edit notebooks/02_render_check.py` (interactively), or
-      `python notebooks/02_render_check.py` (as a script; it checks the full renders if they exist,
-      otherwise the mini renders).
+      `python notebooks/02_render_check.py -- --dataset abo` (as a script; it checks the full renders if
+      they exist, otherwise the mini renders; without `--dataset` it checks Pix3D).
+    - The checks over all views take about half a minute for Pix3D (9,875 views) and about 6 minutes for
+      ABO (109,825 views).
     """)
     return
 
@@ -44,7 +46,8 @@ def _(mo):
     ## 1. Imports and settings
 
     The next cell imports the libraries and the project modules, including the render step, and
-    sets the dataset to check and the seed of the random samples.
+    sets the seed of the random samples. The cell after it chooses the dataset to check (`pix3d` or
+    `abo`); as a script, the dataset comes from `--dataset`.
     """)
     return
 
@@ -66,7 +69,6 @@ def _():
     from src.data.catalog import read_table  # noqa: E402
     from src.pipeline import render_meshes  # noqa: E402
 
-    DATASET = "pix3d"  # the dataset to check ("abo" once the ABO meshes are in the catalog)
     CFG = load_config()
     BACKGROUND = np.array(CFG["render"]["background_rgb"], dtype=np.uint8)
     VIEWS = 25
@@ -74,7 +76,6 @@ def _():
     return (
         BACKGROUND,
         CFG,
-        DATASET,
         Image,
         ImageDraw,
         SAMPLE_SEED,
@@ -88,6 +89,20 @@ def _():
         read_table,
         render_meshes,
     )
+
+
+@app.cell
+def _(mo):
+    # In the editor, choose here. As a script: python notebooks/02_render_check.py -- --dataset abo
+    dataset_choice = mo.ui.dropdown(["pix3d", "abo"], value=mo.cli_args().get("dataset") or "pix3d", label="dataset to check")
+    dataset_choice
+    return (dataset_choice,)
+
+
+@app.cell
+def _(dataset_choice):
+    DATASET = dataset_choice.value  # the dataset that every later cell checks
+    return (DATASET,)
 
 
 @app.cell(hide_code=True)

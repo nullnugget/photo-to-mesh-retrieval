@@ -27,3 +27,24 @@ segment:
       model.safetensors: 184305280
       preprocessor_config.json: 683
       processor_config.json: 95
+    box_mask: single                 # mask for a box prompt: "single" (SAM's one-mask output) or "largest"
+                                     # (the largest of SAM's three candidates); see src/preprocess/segment.py
+
+  # Detector text for the classes whose folder name is not plain English. Other classes use their
+  # name with spaces for underscores ("ceiling_light" -> "ceiling light."). To be checked on the ABO photos.
+  prompts:
+    bean_bag: bean bag chair
+    tv_stand: tv stand
+    basket_bin: basket
+    planter: plant pot
+
+  # ABO photo cleaning: a photo is kept only if all rules pass (the detector threshold above is rule 1).
+  cleaning:
+    max_edges_touched: 2             # a box that touches 3 or 4 photo edges is usually a close-up of a detail
+    min_mask_area: 0.05              # the mask must cover at least 5 % of the photo ...
+    max_mask_area: 0.90              # ... and at most 90 %
+
+  # Quality check against reference masks (Pix3D).
+  check:
+    edge_band_fraction: 0.005        # the edge-tolerant IoU ignores pixels this close to the reference edge
+                                     # (0.5 % of the longer photo side: 3 pixels at 640 pixels)

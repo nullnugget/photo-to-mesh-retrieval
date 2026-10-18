@@ -7,6 +7,7 @@ addopts = "-ra"
 markers = [
     "gpu: needs a CUDA GPU (skipped if none is available)",
     "data: needs the datasets in data/ (skipped if they are missing)",
+    "weights: needs the SAM 2.1 and Grounding DINO weights in weights/ (skipped if they are missing)",
 ]
 filterwarnings = [
     "ignore:xFormers is not available:UserWarning",

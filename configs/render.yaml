@@ -35,3 +35,7 @@ render:
       ambient: 0.25
       specular: 0.05
     L4: {type: directional_world, direction: [0.0, -1.0, 0.0], ambient: 0.35, diffuse: 0.6, specular: 0.05}   # light from above
+    # L2 with its brightness range moved away from the background grey (128), so that no object pixel
+    # can have the background value. Brightness = 255 x (albedo x (ambient + diffuse x cos) + highlight).
+    L2_bright: {type: directional_camera_relative, elevation_deg: 35, azimuth_deg: -35, ambient: 0.82, diffuse: 0.6, specular: 0.05}  # 146 to 255
+    L2_dark: {type: directional_camera_relative, elevation_deg: 35, azimuth_deg: -35, ambient: 0.08, diffuse: 0.55, specular: 0.0}    # 14 to 112

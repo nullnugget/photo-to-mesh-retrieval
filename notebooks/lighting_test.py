@@ -39,6 +39,12 @@ def _(mo):
     | L2 | A key light 35° above and 35° left of the viewing direction (moves with the camera) |
     | L3 | L2 plus a weaker fill light from the right |
     | L4 | One fixed light from straight above, like a ceiling light |
+    | L2_bright | L2, with the brightness moved up (146 to 255): the object is always lighter than the background |
+    | L2_dark | L2, with the brightness moved down (14 to 112): the object is always darker than the background |
+
+    The two L2 variants test the separation from the background: with L2, surfaces at about 50° to
+    the light have exactly the background grey (128), so parts of the outline blend into the
+    background, much more often than in the photos.
 
     **Queries:** all train and val photos of Pix3D (8,557; no training happens here, so train
     photos are not "seen"). The test photos stay out, so that the choice of the light does not use
@@ -80,7 +86,7 @@ def _(mo):
     | `MAX_PHOTOS_PER_MESH` | 30 | Photos per sampled mesh used for the image statistics |
     | `SEED` | 0 | Fixed seed of the random sample |
     | `QUERY_CHUNK` | 512 | Query photos read and turned into features at once (limits the memory) |
-    | `LIGHTS` | L0 ... L4 | The light setups to compare (all presets in `configs/render.yaml`) |
+    | `LIGHTS` | L0 ... L4, L2_bright, L2_dark | The light setups to compare (all presets in `configs/render.yaml`) |
     | `ALPHA` | from `configs/train.yaml` | Weight of the view score in the combined score |
     """)
     return
@@ -99,6 +105,7 @@ def _():
     import matplotlib.pyplot as plt
     import numpy as np
     from PIL import Image, ImageDraw
+    from scipy import ndimage
     from tqdm import tqdm
 
     # The notebook is in <repository>/notebooks/, so the repository root is one level up.
@@ -146,6 +153,7 @@ def _():
         load_split,
         make_run_name,
         metrics,
+        ndimage,
         np,
         object_masks,
         paths,
@@ -318,7 +326,7 @@ def _(mo):
 
     The next cell shows four sampled meshes (from different categories), one per row. Each row
     starts with one of the mesh's query photos; then come two views for each light setup, in the
-    order L0, L1, L2, L3, L4: a view from the middle ring (15° elevation, 22.5° azimuth) and one
+    order of the table in the introduction: a view from the middle ring (15° elevation, 22.5° azimuth) and one
     from the high ring (45° elevation, 90° azimuth).
 
     What to look for:
@@ -326,6 +334,7 @@ def _(mo):
     - Is the 3D form clear: do the parts separate, can you see which surfaces face which way?
     - Are there areas of pure white (saturation) or pure black where the form disappears?
     - Which setup looks most like the photos, in the light and dark areas?
+    - Does the outline stand out from the grey background everywhere?
     """)
     return
 
@@ -368,6 +377,12 @@ def _(mo):
     | `contrast` | Standard deviation of the grey values on the object: how much the shading varies. Flat images have a low value |
     | `white_percent` | Share of object pixels at 250 or more: saturated areas, where the form is lost |
     | `black_percent` | Share of object pixels at 10 or less |
+    | `near_background_percent` | Share of object pixels within 8 grey levels of the background (128): there, the object and the background look the same |
+    | `outline_difference` | Mean difference from the background grey along the outline (a band of 2 pixels inside the object edge). Higher = the outline stands out more |
+
+    (The object pixels are found as the pixels that differ from the background grey, so an object
+    pixel of exactly 128 is not counted; this makes `near_background_percent` slightly too low for
+    the setups whose range includes 128.)
 
     A render setup whose brightness and contrast are near those of the photos looks more like a
     photo in its light and dark areas. This is a hint, not the decision; section 7 measures the match.
@@ -376,17 +391,22 @@ def _(mo):
 
 
 @app.cell
-def _(BACKGROUND, Image, LIGHTS, load_views, mo, np, object_masks, paths, sample_meshes, sample_queries):
+def _(BACKGROUND, Image, LIGHTS, load_views, mo, ndimage, np, object_masks, paths, sample_meshes, sample_queries):
     def grey_statistics(name, images):
         """Brightness statistics of the object pixels of RGB images: uint8 (N, H, W, 3)."""
         grey = images.astype(np.float32).mean(axis=-1)
-        values = grey[object_masks(images, BACKGROUND)]
+        masks = object_masks(images, BACKGROUND)
+        values = grey[masks]
+        # The outline band: object pixels that a 2-pixel erosion removes (per image, not across images).
+        outline = masks & ~ndimage.binary_erosion(masks, structure=np.ones((1, 3, 3), bool), iterations=2)
         return {
             "images": name,
             "mean_brightness": round(float(values.mean()), 1),
             "contrast": round(float(values.std()), 1),
             "white_percent": round(float((values >= 250).mean() * 100), 2),
             "black_percent": round(float((values <= 10).mean() * 100), 2),
+            "near_background_percent": round(float((np.abs(values - BACKGROUND[0]) <= 8).mean() * 100), 1),
+            "outline_difference": round(float(np.abs(grey[outline] - BACKGROUND[0]).mean()), 1),
         }
 
     _rows = [grey_statistics(_light, np.concatenate([load_views(_light, _m) for _m in sample_meshes])) for _light in LIGHTS]
@@ -524,9 +544,9 @@ def _(mo):
     | `R@1_interval` | 95 % bootstrap interval of R@1: the range in which the true value probably lies, given this number of queries |
     | `R@5`, `R@10` | Share of queries whose correct mesh is among the first 5 or 10 (%) |
     | `Cat@1` | Share of queries whose first result has the correct category (%) |
-    | `vs_L0` | R@1 of this setup minus R@1 of L0 (the v1 setup), in percentage points |
-    | `vs_L0_interval` | 95 % interval of that difference (paired bootstrap: the same queries for both setups). If it does not include 0, the difference is clear |
-    | `share_better_than_L0` | Share of the bootstrap resamples in which this setup beats L0 (near 1.0 = clearly better; near 0.5 = no difference) |
+    | `vs_baseline` | R@1 of this setup minus R@1 of the baseline, in percentage points. The baseline is the active setup in `configs/render.yaml` (`render.lighting`) |
+    | `vs_baseline_interval` | 95 % interval of that difference (paired bootstrap: the same queries for both setups). If it does not include 0, the difference is clear |
+    | `share_better_than_baseline` | Share of the bootstrap resamples in which this setup beats the baseline (near 1.0 = clearly better; near 0.5 = no difference; near 0.0 = clearly worse) |
 
     The second table gives R@1 with the three scores: view score, mesh score (mean of the views),
     and the combined score with `ALPHA`. The chart shows R@1 (view score) with its interval.
@@ -535,7 +555,7 @@ def _(mo):
 
 
 @app.cell
-def _(ALPHA, LIGHTS, all_queries, gallery_meshes, metrics, mo, np, plt, query_features, search, view_features):
+def _(ALPHA, CFG, LIGHTS, all_queries, gallery_meshes, metrics, mo, np, plt, query_features, search, view_features):
     _mesh_column = {m["mesh_id"]: i for i, m in enumerate(gallery_meshes)}
     _correct = np.array([_mesh_column[q["mesh_id"]] for q in all_queries])
     _query_categories = np.array([q["category"] for q in all_queries])
@@ -563,16 +583,18 @@ def _(ALPHA, LIGHTS, all_queries, gallery_meshes, metrics, mo, np, plt, query_fe
             "R@1_mesh_score": round(100 * metrics.recall_at_k(metrics.correct_ranks(search.mesh_scores(query_features, _views), _correct), 1), 1),
             f"R@1_combined_alpha_{ALPHA}": round(100 * metrics.recall_at_k(metrics.correct_ranks(search.combined_scores(query_features, _views, ALPHA), _correct), 1), 1),
         })
+    _baseline = CFG["render"]["lighting"]
     for _row in results:
-        _comparison = metrics.paired_difference(hits_at_1["L0"].astype(float), hits_at_1[_row["setup"]].astype(float))
-        _row["vs_L0"] = round(100 * _comparison["difference"], 1)
-        _row["vs_L0_interval"] = f"{100 * _comparison['low']:.1f} to {100 * _comparison['high']:.1f}"
-        _row["share_better_than_L0"] = round(_comparison["share_b_better"], 3)
+        _comparison = metrics.paired_difference(hits_at_1[_baseline].astype(float), hits_at_1[_row["setup"]].astype(float))
+        _row["vs_baseline"] = round(100 * _comparison["difference"], 1)
+        _row["vs_baseline_interval"] = f"{100 * _comparison['low']:.1f} to {100 * _comparison['high']:.1f}"
+        _row["share_better_than_baseline"] = round(_comparison["share_b_better"], 3)
 
-    chart, _axis = plt.subplots(figsize=(6, 3))
+    chart, _axis = plt.subplots(figsize=(7, 3.2))
     _values = [r["R@1"] for r in results]
     _intervals = [tuple(float(x) for x in r["R@1_interval"].split(" to ")) for r in results]
     _axis.bar(LIGHTS, _values, color="#888888")
+    _axis.tick_params(axis="x", labelrotation=30)
     _axis.errorbar(LIGHTS, _values, yerr=[[v - lo for v, (lo, _) in zip(_values, _intervals)], [hi - v for v, (_, hi) in zip(_values, _intervals)]],
                    fmt="none", ecolor="black", capsize=4)
     _axis.set_ylabel("R@1 (%), view score")

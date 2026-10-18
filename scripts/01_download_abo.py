@@ -1,4 +1,4 @@
-"""Download the part of the ABO dataset that the project uses.
+"""Download the part of the ABO dataset that the project uses, and put its meshes into the catalog.
 
 Stages (each skips the files that exist already, so a stopped run continues where it stopped):
 
@@ -8,12 +8,14 @@ Stages (each skips the files that exist already, so a stopped run continues wher
 3. meshes: only the geometry of each mesh (about 5 % of each `.glb` file), saved as
    `data/raw/abo/meshes/<class>/<model id>.ply`, with its glTF description `<model id>.gltf.json`.
 4. photos: the catalog photos at full resolution, `data/raw/abo/images/<class>/<image id>.jpg`.
+5. catalog: one row per distinct geometry in `data/derived/catalog/meshes.csv` (meshes with the
+   same geometry, such as colour variants, share one row); after this, the meshes can be rendered.
 
 The full download is about 21 GB and takes about 40 minutes. Each stage shows a progress bar
 with the remaining time. Ctrl-C is safe: run the same command again to continue.
 
 A mini run (--mini) takes the first 3 meshes of each class and only their photos, and writes them
-to `test_outputs/download_abo_mini/`. The check notebook `notebooks/03_abo_check.py` can start a
+to `test_outputs/download_abo_mini/` (its catalog rows too). The check notebook `notebooks/03_abo_check.py` can start a
 mini run with a button and then shows the results.
 
 The logic is in `src/pipeline/download_abo.py`.
@@ -22,6 +24,7 @@ Usage (from the repository root):
     python scripts/01_download_abo.py                     # everything
     python scripts/01_download_abo.py --mini              # quick check, about a minute
     python scripts/01_download_abo.py --stages photos     # one stage only
+    python scripts/01_download_abo.py --stages catalog    # only the catalog rows (after the download)
 """
 
 import argparse

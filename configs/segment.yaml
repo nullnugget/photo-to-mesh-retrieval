@@ -1,0 +1,29 @@
+# Segmentation settings: the detector that finds a box for a text prompt (Grounding DINO), and the
+# segmenter that turns a box into an object mask (SAM 2.1). They are used for the ABO photos (which
+# have no masks), for the end-to-end evaluation, and for the demo. Paths are relative to the
+# repository root. scripts/00_download_weights.py downloads the listed files into "folder".
+segment:
+  detector:                          # Grounding DINO tiny: text ("chair") -> boxes with confidences
+    hub_repo: IDEA-Research/grounding-dino-tiny
+    revision: a2bb814dd30d776dcf7e30523b00659f4f141c71     # fixed commit of the model repository
+    folder: weights/grounding_dino/grounding-dino-tiny
+    files:                           # name: size in bytes (checked after the download)
+      config.json: 1644
+      model.safetensors: 689359096
+      preprocessor_config.json: 457
+      tokenizer.json: 711396
+      tokenizer_config.json: 1237
+      special_tokens_map.json: 125
+      added_tokens.json: 82
+      vocab.txt: 231508
+    box_threshold: 0.35              # boxes with a lower confidence are ignored
+    text_threshold: 0.25             # how strongly a box must match the words of the prompt
+  segmenter:                         # SAM 2.1 small: image + box -> object mask
+    hub_repo: facebook/sam2.1-hiera-small
+    revision: ee5bba1d82bb8749febdf90f45e84b687142ba03
+    folder: weights/sam2/sam2.1-hiera-small
+    files:
+      config.json: 5698
+      model.safetensors: 184305280
+      preprocessor_config.json: 683
+      processor_config.json: 95

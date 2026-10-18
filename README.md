@@ -57,9 +57,10 @@ Each pipeline step is a Python script in `scripts/`. Run it from the repository 
 
 | Step | Script | Status |
 |---|---|---|
-| ABO metadata, mesh geometry, and photos | `scripts/01_download_abo.py` | available |
+| Detector and segmenter weights (Grounding DINO, SAM 2.1) | `scripts/00_download_weights.py` | available |
+| ABO metadata, mesh geometry, photos, and mesh catalog rows | `scripts/01_download_abo.py` | available |
 | Query images, catalog, and splits | `scripts/03_make_queries.py --dataset pix3d` | available |
-| Renders (25 grey views per mesh) | `scripts/04_render.py --dataset pix3d` | available |
+| Renders (25 grey views per mesh) | `scripts/04_render.py --dataset pix3d` (or `abo`) | available |
 | Other steps | n/a | to be written |
 
 ## Data and model credits

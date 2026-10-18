@@ -18,9 +18,9 @@ from src.config import (
 )
 
 
-def test_default_files_merge_into_four_sections():
+def test_default_files_merge_into_five_sections():
     cfg = load_config()
-    assert list(cfg) == ["data", "render", "backbone", "train"]
+    assert list(cfg) == ["data", "render", "backbone", "train", "segment"]
 
 
 @pytest.mark.parametrize(

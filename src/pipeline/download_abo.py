@@ -12,13 +12,15 @@ Stages (each can run alone; each skips the files that exist already, so a stoppe
      JSON chunk, to trace the PLY file back to its source).
 4. photos: download each selected photo at full resolution into `images/<class>/<image id>.jpg`.
    A photo that several meshes show is downloaded once, into the folder of the first mesh.
+5. catalog: put the downloaded meshes into the catalog, each distinct geometry once
+   (`src/pipeline/catalog_abo_meshes.py`). After this stage, the ABO meshes can be rendered.
 
 Every mesh gets one row in `manifest/mesh_files.csv` with the result: status, the decoded vertex
 and face counts, and the downloaded bytes. The check notebook compares the counts with the ABO
 metadata. The run report goes to `manifest/download_report.json`.
 
 A mini run takes the first 3 meshes of each class (and only their photos), and writes the
-manifest, meshes, and photos to `test_outputs/download_abo_mini/`. The metadata files always go to
+manifest, meshes, photos, and catalog rows to `test_outputs/download_abo_mini/`. The metadata files always go to
 `data/raw/abo/metadata/`: they are the same files in both cases and are needed for the real run.
 """
 
@@ -34,8 +36,9 @@ from tqdm import tqdm
 from src import paths
 from src.data import abo, glb
 from src.data.http import Fetcher
+from src.pipeline import catalog_abo_meshes
 
-STAGES = ("metadata", "meshes", "photos")
+STAGES = ("metadata", "meshes", "photos", "catalog")
 MINI_MESHES_PER_CLASS = 3
 DONE, SKIPPED, FAILED = "done", "skipped", "failed"
 MESH_FILE_COLUMNS = ["mesh_id", "status", "num_vertices", "num_faces", "bytes", "file_bytes", "message"]
@@ -49,6 +52,7 @@ def output_dirs(mini: bool) -> dict[str, Path]:
         "manifest": base / "manifest",
         "meshes": base / "meshes",
         "photos": base / "images",
+        "catalog": base / "catalog" if mini else paths.CATALOG_DIR,
     }
 
 
@@ -162,7 +166,7 @@ def run(cfg: dict, mini: bool = False, stages: tuple[str, ...] = STAGES, workers
     Args:
         cfg: The merged settings; the step reads `cfg["data"]` (class rules, photo size, workers, retries).
         mini: True = 3 meshes per class and their photos, into test_outputs/download_abo_mini/.
-        stages: Which of "metadata", "meshes", "photos" to run. The selection always runs.
+        stages: Which of "metadata", "meshes", "photos", "catalog" to run. The selection always runs.
         workers: Parallel downloads (None = `data.abo.download_workers`).
     """
     unknown = set(stages) - set(STAGES)
@@ -224,6 +228,10 @@ def run(cfg: dict, mini: bool = False, stages: tuple[str, ...] = STAGES, workers
             "failed": [r["image_id"] for r in results if r["status"] == FAILED],
         }
         print(f"photos: {dict(status)}; {report['photos']['bytes_downloaded'] / 1e6:.1f} MB")
+
+    # 5. Catalog rows of the meshes (distinct geometries only).
+    if "catalog" in stages:
+        report["catalog"] = catalog_abo_meshes.run(meshes, out["meshes"], mesh_file, out["catalog"], out["manifest"])
 
     report["seconds"] = round(time.perf_counter() - start, 1)
     report_path = out["manifest"] / "download_report.json"

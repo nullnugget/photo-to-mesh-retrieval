@@ -1,7 +1,8 @@
-"""Download the pretrained detector (Grounding DINO tiny) and segmenter (SAM 2.1 small).
+"""Download the pretrained detector (Grounding DINO tiny) and segmenter (SAM 2.1 large).
 
 The files and their fixed versions are listed in `configs/segment.yaml`; they go into
-`weights/grounding_dino/grounding-dino-tiny/` and `weights/sam2/sam2.1-hiera-small/` (about 0.9 GB).
+`weights/grounding_dino/grounding-dino-tiny/` and `weights/sam2/sam2.1-hiera-large/` (about 1.6 GB).
+SAM 2.1 small (0.2 GB) is downloaded only on request, for comparisons and fast tests.
 Files that exist with the right size are skipped. The DINOv3 and DINOv2 backbones are placed by
 hand (see the README).
 
@@ -9,8 +10,8 @@ The logic is in `src/pipeline/download_weights.py`.
 
 Usage (from the repository root):
     python scripts/00_download_weights.py                    # both models
-    python scripts/00_download_weights.py --models segmenter # only SAM 2.1
-    python scripts/00_download_weights.py --models segmenter_large   # SAM 2.1 large (0.9 GB), for comparison
+    python scripts/00_download_weights.py --models segmenter        # only SAM 2.1 large
+    python scripts/00_download_weights.py --models segmenter_small  # SAM 2.1 small, for comparisons and tests
 """
 
 import argparse

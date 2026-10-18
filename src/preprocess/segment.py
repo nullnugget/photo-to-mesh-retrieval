@@ -4,7 +4,7 @@ Two pretrained models do the work (settings in `configs/segment.yaml`, weights i
 
 - Detector, Grounding DINO tiny: photo + text ("sofa.") -> boxes, each with a confidence.
   It is needed only where nobody gives a box: the ABO catalog photos.
-- Segmenter, SAM 2.1 small: photo + box -> object mask. A box gives SAM the full extent of the
+- Segmenter, SAM 2.1 (large; `segment.segmenter`): photo + box -> object mask. A box gives SAM the full extent of the
   object, so SAM is less likely to select only a part (a cushion instead of the sofa).
   With a point instead of a box (a click in the demo), the request is ambiguous (the seat? the
   chair? the chair and the floor?), so SAM returns 3 candidate masks and we choose one.
@@ -91,6 +91,9 @@ class Segmenter:
         """Load SAM from `segmenter_cfg["folder"]` (relative to the repository root).
 
         `segmenter_cfg["box_mask"]` selects the mask for a box prompt (see BOX_MASK_CHOICES).
+        `segmenter_cfg["precision"]` is "fp16" or "fp32" (default). fp16 applies only on the GPU: the
+        weights stay fp32, and PyTorch runs the large matrix products in fp16 ("autocast"), which is
+        about 2.5 times faster and gives the same masks. The CPU always computes in fp32.
         """
         # transformers is imported here and not at the top, so that the other functions of this module
         # (mask comparison, mask files) work without loading the large library.
@@ -101,6 +104,7 @@ class Segmenter:
             raise ValueError(f"box_mask must be one of {BOX_MASK_CHOICES}, got {self.box_mask!r}")
         folder = paths.resolve(segmenter_cfg["folder"])
         self.device = torch.device(device)
+        self.half_precision = segmenter_cfg.get("precision", "fp32") == "fp16" and self.device.type == "cuda"
         self.processor = Sam2Processor.from_pretrained(folder, local_files_only=True)
         # The weight folder describes SAM's video version (config "sam2_video"). The image model uses
         # the same weights; transformers prints a warning about the type, and every weight loads.
@@ -118,7 +122,8 @@ class Segmenter:
         input_labels), in photo pixels. Returns the processor output and the image features.
         """
         inputs = self.processor(images=image, return_tensors="pt", **prompt).to(self.device)
-        return inputs, self.model.get_image_embeddings(inputs["pixel_values"])
+        with torch.autocast("cuda", dtype=torch.float16, enabled=self.half_precision):
+            return inputs, self.model.get_image_embeddings(inputs["pixel_values"])
 
     @torch.inference_mode()
     def _decode(self, inputs: dict, features: list[torch.Tensor], multimask: bool) -> tuple[np.ndarray, np.ndarray]:
@@ -127,10 +132,11 @@ class Segmenter:
         k is 1 with multimask=False, else 3.
         """
         prompt = {key: inputs[key] for key in ("input_boxes", "input_points", "input_labels") if key in inputs}
-        outputs = self.model(image_embeddings=features, multimask_output=multimask, **prompt)
+        with torch.autocast("cuda", dtype=torch.float16, enabled=self.half_precision):
+            outputs = self.model(image_embeddings=features, multimask_output=multimask, **prompt)
         # SAM predicts masks at 256 x 256; post_process_masks scales them to the photo size and
-        # turns them into True/False at the threshold 0 of SAM's mask values.
-        masks = self.processor.post_process_masks(outputs.pred_masks.cpu(), inputs["original_sizes"].cpu())[0]
+        # turns them into True/False at the threshold 0 of SAM's mask values (in fp32 on the CPU).
+        masks = self.processor.post_process_masks(outputs.pred_masks.float().cpu(), inputs["original_sizes"].cpu())[0]
         return masks[0].numpy().astype(bool), outputs.iou_scores[0, 0].float().cpu().numpy()
 
     def _choose(self, inputs: dict, features: list[torch.Tensor], choice: str) -> MaskResult:
@@ -273,12 +279,19 @@ def edge_band(mask: np.ndarray, width: int) -> np.ndarray:
     The quality check ignores this band for an "edge-tolerant" IoU: a reference mask that is a few
     pixels off the photo (or a slightly different edge) then does not count as an error. Without the
     band, a shift of 2 pixels on a chair leg 5 pixels wide already halves the IoU of that leg.
+    "Within `width` pixels" uses a square neighbourhood (also diagonally `width` pixels). The band is
+    the mask grown by `width` minus the mask shrunk by `width`; both use a running maximum (or minimum)
+    along the rows and then the columns, so the cost does not depend on `width`.
     """
     if width <= 0:
         return np.zeros_like(mask, dtype=bool)
-    grown = ndimage.binary_dilation(mask, iterations=width)
-    shrunk = ndimage.binary_erosion(mask, iterations=width)
-    return grown & ~shrunk
+    size = 2 * width + 1
+    values = mask.astype(np.uint8)
+    grown = ndimage.maximum_filter1d(ndimage.maximum_filter1d(values, size, axis=0), size, axis=1)
+    # Pixels outside the photo count as object here, so that an object cut by the photo border is
+    # not shrunk from that border (the border is not an edge of the object).
+    shrunk = ndimage.minimum_filter1d(ndimage.minimum_filter1d(values, size, axis=0, mode="nearest"), size, axis=1, mode="nearest")
+    return grown.astype(bool) & ~shrunk.astype(bool)
 
 
 def edge_band_width(mask: np.ndarray, fraction: float) -> int:

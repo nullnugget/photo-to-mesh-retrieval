@@ -17,7 +17,7 @@ def pytest_collection_modifyitems(config, items):
     skip_gpu = pytest.mark.skip(reason="no CUDA GPU available")
     skip_data = pytest.mark.skip(reason=f"dataset missing: {paths.PIX3D_JSON}")
     segment_cfg = load_config()["segment"]
-    weight_files = [paths.resolve(segment_cfg[m]["folder"]) / "model.safetensors" for m in ("detector", "segmenter")]
+    weight_files = [paths.resolve(segment_cfg[m]["folder"]) / "model.safetensors" for m in ("detector", "segmenter", "segmenter_small")]
     skip_weights = pytest.mark.skip(reason="segmentation weights missing (scripts/00_download_weights.py)")
     for item in items:
         if "gpu" in item.keywords and not torch.cuda.is_available():

@@ -1,6 +1,7 @@
 """Tests for src/preprocess/segment.py and the cleaning rules of src/pipeline/segment_photos.py.
 
-The model tests run on the CPU (a few seconds each), so they do not need the GPU.
+The model tests run on the CPU (a few seconds each), so they do not need the GPU. They use SAM 2.1
+small, which behaves like the active SAM 2.1 large at a quarter of the time.
 """
 
 import numpy as np
@@ -79,7 +80,7 @@ def test_sam_box_prompt_finds_a_plain_block():
     photo[60:180, 80:240] = (40, 40, 40)
     block = np.zeros((240, 320), bool)
     block[60:180, 80:240] = True
-    segmenter = segment.Segmenter(load_config()["segment"]["segmenter"], device="cpu")
+    segmenter = segment.Segmenter(load_config()["segment"]["segmenter_small"], device="cpu")
     result = segmenter.mask_from_box(photo, (74, 54, 246, 186))  # a box a little larger than the block
     assert result.mask.shape == (240, 320) and result.mask.dtype == bool
     assert segment.mask_iou(result.mask, block) > 0.95
@@ -90,7 +91,7 @@ def test_sam_box_prompt_finds_a_plain_block():
 @pytest.mark.weights
 def test_unknown_box_mask_choice_is_an_error():
     with pytest.raises(ValueError):
-        segment.Segmenter({**load_config()["segment"]["segmenter"], "box_mask": "smallest"}, device="cpu")
+        segment.Segmenter({**load_config()["segment"]["segmenter_small"], "box_mask": "smallest"}, device="cpu")
 
 
 @pytest.mark.weights
@@ -114,7 +115,7 @@ def test_detector_finds_the_chair_of_a_pix3d_photo():
 def test_one_encoding_gives_the_same_masks_as_separate_calls():
     photo = np.full((240, 320, 3), 255, np.uint8)
     photo[60:180, 80:240] = (40, 40, 40)
-    segmenter = segment.Segmenter(load_config()["segment"]["segmenter"], device="cpu")
+    segmenter = segment.Segmenter(load_config()["segment"]["segmenter_small"], device="cpu")
     box = (74, 54, 246, 186)
     both = segmenter.masks_for_each_choice(photo, box)
     for choice in segment.BOX_MASK_CHOICES:

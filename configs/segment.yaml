@@ -18,7 +18,24 @@ segment:
       vocab.txt: 231508
     box_threshold: 0.35              # boxes with a lower confidence are ignored
     text_threshold: 0.25             # how strongly a box must match the words of the prompt
-  segmenter:                         # SAM 2.1 small: image + box -> object mask
+  segmenter:                         # SAM 2.1 large (217 M parameters): image + box -> object mask. The active
+                                     # segmenter of every step. Chosen over small in notebooks/06_mask_variants.py:
+                                     # +2.7 points of zero-shot R@1 on 1,500 Pix3D tuning photos (60.7 against 58.0);
+                                     # GPU about 1.3 GB, 0.54 s per photo (small: 0.5 GB, 0.16 s)
+    hub_repo: facebook/sam2.1-hiera-large
+    revision: 665f8e2ad61cf5f53d65644ff27c8ee525124610
+    folder: weights/sam2/sam2.1-hiera-large
+    files:                           # name: size in bytes (checked after the download)
+      config.json: 5705
+      model.safetensors: 897897416
+      preprocessor_config.json: 683
+      processor_config.json: 95
+    box_mask: single                 # mask for a box prompt: "single" (SAM's one-mask output) or "largest"
+                                     # (the largest of SAM's three candidates; it did not help); see src/preprocess/segment.py
+    precision: fp16                  # fp16 on the GPU: 2.5 x faster than fp32 (0.22 s against 0.53 s per photo), masks the same
+                                     # (median agreement 0.9999; IoU change at most 0.002 on 60 photos). The CPU always uses fp32
+  segmenter_small:                   # SAM 2.1 small (39 M parameters): kept for comparisons and for fast tests on the CPU.
+                                     # Download: python scripts/00_download_weights.py --models segmenter_small
     hub_repo: facebook/sam2.1-hiera-small
     revision: ee5bba1d82bb8749febdf90f45e84b687142ba03
     folder: weights/sam2/sam2.1-hiera-small
@@ -27,20 +44,8 @@ segment:
       model.safetensors: 184305280
       preprocessor_config.json: 683
       processor_config.json: 95
-    box_mask: single                 # mask for a box prompt: "single" (SAM's one-mask output) or "largest"
-                                     # (the largest of SAM's three candidates); see src/preprocess/segment.py
-  segmenter_large:                   # SAM 2.1 large (224 M parameters, 5 x small): candidate for better whole-object
-                                     # masks; compared with small in notebooks/06_mask_variants.py. Not downloaded by
-                                     # default: python scripts/00_download_weights.py --models segmenter_large
-    hub_repo: facebook/sam2.1-hiera-large
-    revision: 665f8e2ad61cf5f53d65644ff27c8ee525124610
-    folder: weights/sam2/sam2.1-hiera-large
-    files:
-      config.json: 5705
-      model.safetensors: 897897416
-      preprocessor_config.json: 683
-      processor_config.json: 95
     box_mask: single
+    precision: fp16
 
   # Detector text for the classes whose folder name is not plain English. Other classes use their
   # name with spaces for underscores ("ceiling_light" -> "ceiling light."). To be checked on the ABO photos.

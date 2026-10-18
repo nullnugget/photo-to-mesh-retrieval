@@ -53,7 +53,7 @@ def _(mo):
     **How to run:** `marimo edit notebooks/06_mask_variants.py`, then the buttons; or
     `python notebooks/06_mask_variants.py` (as a script; about 40 minutes on the GPU; the results are saved
     in `runs/`). Needs the SAM 2.1 small and large weights (`scripts/00_download_weights.py --models
-    segmenter segmenter_large`), the DINOv3 weights, and the Pix3D renders.
+    segmenter segmenter_small`), the DINOv3 weights, and the Pix3D renders.
     """)
     return
 
@@ -230,7 +230,7 @@ def _(
 ):
     mo.stop(not run_button.value and mo.app_meta().mode != "script", mo.md("Press the button to run section 3."))
     _seg_cfg = CFG["segment"]
-    _models = {"small": segment.Segmenter(_seg_cfg["segmenter"]), "large": segment.Segmenter(_seg_cfg["segmenter_large"])}
+    _models = {"small": segment.Segmenter(_seg_cfg["segmenter_small"]), "large": segment.Segmenter(_seg_cfg["segmenter"])}
     extractor = FeatureExtractor(CFG["backbone"])
     torch.cuda.reset_peak_memory_stats()
 

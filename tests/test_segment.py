@@ -65,11 +65,18 @@ def test_box_of_mask_is_one_past_the_object():
 
 
 def test_cleaning_rules():
-    rules = {"max_edges_touched": 2, "min_mask_area": 0.05, "max_mask_area": 0.9}
-    assert cleaning_verdict(1, 0.3, rules)[0] == KEPT
-    assert cleaning_verdict(3, 0.3, rules)[:2] == (REMOVED, "close_up")
-    assert cleaning_verdict(0, 0.01, rules)[:2] == (REMOVED, "mask_too_small")
-    assert cleaning_verdict(0, 0.95, rules)[:2] == (REMOVED, "mask_too_large")
+    rules = {"max_edges_touched": 2, "close_up_box_share": 0.6, "min_box_side": 0.3, "min_box_pixels": 112,
+             "min_mask_area": 0.01, "max_mask_area": 0.9}
+    w, h = 1000, 800
+    assert cleaning_verdict((100, 100, 600, 700), w, h, 0.3, rules)[0] == KEPT  # inside the photo, large enough
+    assert cleaning_verdict((0, 0, 1000, 700), w, h, 0.5, rules)[:2] == (REMOVED, "close_up")  # 3 edges
+    assert cleaning_verdict((0, 50, 800, 750), w, h, 0.5, rules)[:2] == (REMOVED, "close_up")  # 1 edge, box 0.70
+    assert cleaning_verdict((600, 200, 1000, 700), w, h, 0.2, rules)[0] == KEPT  # 1 edge, box 0.25: cut by the frame
+    assert cleaning_verdict((400, 300, 600, 500), w, h, 0.03, rules)[:2] == (REMOVED, "box_too_small")  # 200 < 300 pixels
+    assert cleaning_verdict((450, 20, 550, 780), w, h, 0.03, rules)[0] == KEPT  # thin and tall: a floor lamp
+    assert cleaning_verdict((10, 10, 90, 100), 120, 120, 0.3, rules)[:2] == (REMOVED, "box_too_small")  # under 112 pixels
+    assert cleaning_verdict((100, 100, 600, 700), w, h, 0.005, rules)[:2] == (REMOVED, "mask_too_small")
+    assert cleaning_verdict((100, 100, 600, 700), w, h, 0.95, rules)[:2] == (REMOVED, "mask_too_large")
 
 
 @pytest.mark.weights

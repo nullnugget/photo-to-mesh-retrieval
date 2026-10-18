@@ -65,3 +65,15 @@ def test_class_override_with_unknown_id_or_class_is_an_error(overrides):
     listings = {"B1": {"product_type": "CHAIR", "leaf": "", "image_ids": []}}
     with pytest.raises(ValueError):
         abo.select(models, listings, {}, RULES, class_overrides=overrides)
+
+
+def test_photo_entry_needs_a_single_geometry_group():
+    from src.pipeline.catalog_abo_meshes import photo_entry
+
+    groups = {"abo/sofa/A": "abo/sofa/A", "abo/sofa/B": "abo/sofa/A", "abo/sofa/C": "abo/sofa/C"}
+    photo = abo.AboImage("i1", "sofa", "x/i1.jpg", 10, 10, ["abo/sofa/A", "abo/sofa/B"])
+    assert photo_entry(photo, groups) == "abo/sofa/A"  # two copies of one geometry: one entry
+    photo.mesh_ids = ["abo/sofa/A", "abo/sofa/C"]
+    assert photo_entry(photo, groups) is None  # two different geometries: no single answer
+    photo.mesh_ids = ["abo/sofa/missing"]
+    assert photo_entry(photo, groups) is None

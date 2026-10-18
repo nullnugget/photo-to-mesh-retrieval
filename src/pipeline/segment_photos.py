@@ -6,7 +6,8 @@ Two ways to get the box that SAM needs (`prompt`):
   is the quality check of SAM (how close are SAM's masks to the reference masks?) and the input of
   the end-to-end test (retrieval with SAM masks, as in the demo, where the user draws the box).
 - "detector": Grounding DINO finds the box from the class name (ABO photos, which have no masks).
-  Then the cleaning rules decide whether the photo is kept (see `cleaning_verdict`).
+  Then the cleaning rules decide whether the photo is kept (see `cleaning_verdict`). ABO photos that
+  show the meshes of several gallery entries are not segmented (see `abo_items`).
 
 For every photo, the step:
 
@@ -51,7 +52,7 @@ from src.config import load_yaml, save_config
 from src.data import abo
 from src.data.catalog import read_table
 from src.data.splits import load_split
-from src.pipeline import download_abo
+from src.pipeline import catalog_abo_meshes, download_abo
 from src.preprocess import segment
 
 PROMPTS = ("reference_box", "detector")
@@ -66,7 +67,7 @@ RESULT_COLUMNS = [
     "category",
     "status",  # done, skipped (mask existed), failed (see message)
     "verdict",  # detector only: kept or removed
-    "reason",  # why the photo was removed: no_detection, close_up, mask_too_small, mask_too_large
+    "reason",  # why the photo was removed: no_detection, close_up, box_too_small, mask_too_small, mask_too_large
     "box",  # "x0 y0 x1 y1" in photo pixels
     "detector_score",  # confidence of the box
     "edges_touched",  # photo edges that the box touches (0 to 4)
@@ -134,14 +135,22 @@ def pix3d_items(split: str | None = None, parts: list[str] | None = None) -> lis
 
 
 def abo_items() -> list[PhotoItem]:
-    """The ABO photos of the download manifest (they have no reference masks)."""
+    """The ABO photos of the download manifest that show the meshes of exactly one gallery entry.
+
+    A photo that the listings of several different geometries share (a family photo of a product
+    line, for example) has no single correct answer, so the query step leaves it out; this step does
+    not segment it either (see `catalog_abo_meshes.photo_entry`). ABO photos have no reference masks.
+    """
     _, photos = abo.read_manifest(paths.ABO_MANIFEST_DIR)
+    groups = catalog_abo_meshes.read_geometry_groups(paths.ABO_MANIFEST_DIR)
+    usable = [p for p in photos if catalog_abo_meshes.photo_entry(p, groups) is not None]
+    print(f"abo: {len(photos) - len(usable)} of {len(photos)} photos show meshes of several gallery entries; not segmented")
     return [
         PhotoItem(
             f"{abo.DATASET}/{p.category}/{p.image_id}", p.category,
             str(download_abo.photo_file(paths.ABO_IMAGES_DIR, p).relative_to(paths.ROOT)), None, f"{p.image_id}.png",
         )
-        for p in photos
+        for p in usable
     ]
 
 
@@ -164,15 +173,37 @@ def _sample_per_category(items: list[PhotoItem], count: int, seed: int = MINI_SE
 # ---------------------------------------------------------------------------------------------
 
 
-def cleaning_verdict(edges: int, mask_area: float, cleaning_cfg: dict) -> tuple[str, str, str]:
+def cleaning_verdict(
+    box: tuple[float, float, float, float], width: int, height: int, mask_area: float, cleaning_cfg: dict
+) -> tuple[str, str, str]:
     """Apply the cleaning rules to a detected photo; return (verdict, reason code, detail).
 
-    The rules (`segment.cleaning`; the detector threshold is applied before):
-    - the box touches at most `max_edges_touched` photo edges (else probably a close-up of a detail);
-    - the mask covers between `min_mask_area` and `max_mask_area` of the photo.
+    The rules (`segment.cleaning`; the detector threshold is applied before), in this order:
+    - close_up: the box touches more than `max_edges_touched` photo edges, or it touches any edge and
+      covers at least `close_up_box_share` of the photo. A crop of a detail fills the frame; an object
+      that the frame of a room photo cuts (a bed at the side of the photo) has a smaller box.
+    - box_too_small: the longer box side is under `min_box_side` of the longer photo side, or under
+      `min_box_pixels`. The box and not the mask is measured, because a thin object (a floor lamp)
+      spans the photo while its mask covers only a few per cent.
+    - mask_too_small, mask_too_large: the mask covers less than `min_mask_area` or more than
+      `max_mask_area` of the photo (SAM found almost nothing, or a swatch fills the frame).
+
+    Args:
+        box: The detector box (x0, y0, x1, y1), in photo pixels.
+        width, height: The photo size in pixels.
+        mask_area: The share of the photo that the mask covers.
+        cleaning_cfg: `segment.cleaning`.
     """
+    edges = segment.edges_touched(box, width, height)
+    x0, y0, x1, y1 = box
+    box_share = (x1 - x0) * (y1 - y0) / (width * height)
+    box_side = max(x1 - x0, y1 - y0)
     if edges > cleaning_cfg["max_edges_touched"]:
         return REMOVED, "close_up", f"the box touches {edges} photo edges"
+    if edges >= 1 and box_share >= cleaning_cfg["close_up_box_share"]:
+        return REMOVED, "close_up", f"the box touches {edges} photo edge(s) and covers {box_share:.2f} of the photo"
+    if box_side < cleaning_cfg["min_box_side"] * max(width, height) or box_side < cleaning_cfg["min_box_pixels"]:
+        return REMOVED, "box_too_small", f"longer box side {box_side:.0f} pixels of {max(width, height)}"
     if mask_area < cleaning_cfg["min_mask_area"]:
         return REMOVED, "mask_too_small", f"mask area {mask_area:.3f}"
     if mask_area > cleaning_cfg["max_mask_area"]:
@@ -215,7 +246,7 @@ def segment_photo(item: PhotoItem, target: Path, segmenter, detector, segment_cf
         row.update(iou=round(segment.mask_iou(result.mask, reference), 4),
                    iou_edge_tolerant=round(segment.mask_iou(result.mask, reference, ignore=band), 4))
     else:
-        verdict, reason, detail = cleaning_verdict(edges, area, segment_cfg["cleaning"])
+        verdict, reason, detail = cleaning_verdict(box, width, height, area, segment_cfg["cleaning"])
         row.update(verdict=verdict, reason=reason, message=detail)
     return row
 

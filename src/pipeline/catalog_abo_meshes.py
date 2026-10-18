@@ -58,6 +58,24 @@ def geometry_signature(mesh_path: str | Path) -> tuple[tuple, np.ndarray]:
     return key, sample.astype(np.float32)
 
 
+def read_geometry_groups(manifest_dir: Path) -> dict[str, str]:
+    """Read `geometry_groups.csv` (written by `run`): {mesh id: mesh id of its group's gallery entry}."""
+    with open(manifest_dir / "geometry_groups.csv", newline="") as f:
+        return {row["mesh_id"]: row["group_mesh_id"] for row in csv.DictReader(f)}
+
+
+def photo_entry(photo: abo.AboImage, groups: dict[str, str]) -> str | None:
+    """Return the gallery entry (group mesh id) that a photo shows, or None if there is no single one.
+
+    A photo belongs to the listings of one or more meshes. If all of them are in the same geometry
+    group (copies of one geometry), the photo shows that group's entry. If they are in different
+    groups (for example a photo of a whole product line), the photo has no single correct answer.
+    A mesh without a group (its file was missing) also gives None.
+    """
+    entries = {groups.get(mesh_id) for mesh_id in photo.mesh_ids}
+    return next(iter(entries)) if len(entries) == 1 and None not in entries else None
+
+
 def _representative(members: list[abo.AboMesh]) -> abo.AboMesh:
     """The mesh that represents a group: from the group's most common class, the smallest product id."""
     top_class = Counter(m.category for m in members).most_common(1)[0][0]

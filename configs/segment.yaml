@@ -56,10 +56,16 @@ segment:
     planter: plant pot
 
   # ABO photo cleaning: a photo is kept only if all rules pass (the detector threshold above is rule 1).
+  # Chosen on a sample of 20 random photos per class (notebooks/03_abo_check.py, section 7).
   cleaning:
-    max_edges_touched: 2             # a box that touches 3 or 4 photo edges is usually a close-up of a detail
-    min_mask_area: 0.05              # the mask must cover at least 5 % of the photo ...
-    max_mask_area: 0.90              # ... and at most 90 %
+    max_edges_touched: 2             # close-up: the box touches 3 or 4 photo edges ...
+    close_up_box_share: 0.6          # ... or touches any edge and covers at least 60 % of the photo (a crop that fills
+                                     # the frame; an object cut by the frame of a room photo has a smaller box)
+    min_box_side: 0.3                # too small: the longer box side is under 30 % of the longer photo side ...
+    min_box_pixels: 112              # ... or under 112 pixels (the 224-pixel query would be enlarged more than 2 x).
+                                     # The box, not the mask: a floor lamp spans the photo, but its pole covers 3 %
+    min_mask_area: 0.01              # the mask must cover at least 1 % of the photo (SAM found something) ...
+    max_mask_area: 0.90              # ... and at most 90 % (a swatch or texture that fills the frame)
 
   # Quality check against reference masks (Pix3D).
   check:

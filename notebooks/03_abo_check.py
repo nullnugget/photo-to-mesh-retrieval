@@ -208,13 +208,23 @@ def _(mo):
     | `not_finite` | Files with a NaN or infinite coordinate | 0 |
 
     The table below the measures lists the meshes that differ (empty when all agree). The full
-    download has about 5,000 files, so this cell then takes about a minute.
+    download has about 5,000 files, so the check takes about a minute. It runs only when the button is
+    pressed (as a script it always runs). The later sections do not need it, and it does not start
+    again by itself when another cell changes (for example the download choice).
     """)
     return
 
 
 @app.cell
-def _(dirs, download_abo, load_ply, meshes, mo, np):
+def _(mo):
+    geometry_button = mo.ui.run_button(label="Run the geometry check (about a minute)")
+    geometry_button
+    return (geometry_button,)
+
+
+@app.cell
+def _(dirs, download_abo, geometry_button, load_ply, meshes, mo, np):
+    mo.stop(not geometry_button.value and mo.app_meta().mode != "script", mo.md("Press the button to run the geometry check."))
     _checks = {"checked": 0, "missing": 0, "vertex_count_differs": 0, "face_count_differs": 0, "size_differs": 0, "not_finite": 0}
     _differences = []
     for _mesh in meshes:
@@ -394,9 +404,13 @@ def _(mo):
     | Reason | Rule | Typical photo |
     |:---|:---|:---|
     | `no_detection` | No box reaches the detector threshold (`box_threshold`, 0.35) | colour swatch, label, text-only image |
-    | `close_up` | The box touches more than `max_edges_touched` (2) photo edges | detail of a material, a drawer, a leg |
-    | `mask_too_small` | The mask covers less than `min_mask_area` (5 %) of the photo | the object is tiny, or the detector chose a small part |
+    | `close_up` | The box touches 3 or 4 photo edges, or touches any edge and covers at least 60 % of the photo (`max_edges_touched`, `close_up_box_share`) | detail of a material, a drawer, a leg |
+    | `box_too_small` | The longer box side is under 30 % of the longer photo side, or under 112 pixels (`min_box_side`, `min_box_pixels`) | a small object far away in a room photo |
+    | `mask_too_small` | The mask covers less than `min_mask_area` (1 %) of the photo | SAM found almost nothing in the box |
     | `mask_too_large` | The mask covers more than `max_mask_area` (90 %) of the photo | swatch or texture that fills the frame |
+
+    The step does not segment photos that show the meshes of several gallery entries (the query step
+    leaves them out).
 
     Choose the outputs to check: `sample` (`--mini --mini-count 20`, in `test_outputs/segment_mini/`) or
     `full` (`data/derived/masks/`).
@@ -427,7 +441,7 @@ def _(mo):
     | `class` | Our class name (the last row adds up all classes) |
     | `photos` | Photos segmented |
     | `kept`, `kept_share` | Photos that pass every rule, and their share |
-    | `no_detection`, `close_up`, `mask_too_small`, `mask_too_large` | Removed photos per reason (see the table above) |
+    | `no_detection`, `close_up`, `box_too_small`, `mask_too_small`, `mask_too_large` | Removed photos per reason (see the table above) |
     | `median_detector_score` | Median confidence of the chosen box (photos with a detection) |
     | `median_mask_area` | Median share of the photo covered by the mask (kept photos) |
 
@@ -448,7 +462,7 @@ def _(Counter, SEGMENT_OUTPUTS, abo, download_abo, mo, np, paths, read_table, se
         for r in read_table(segment_photos.results_file("abo", SEGMENT_ROOT))
         if r["status"] == "done"
     ]
-    REASONS = ["no_detection", "close_up", "mask_too_small", "mask_too_large"]
+    REASONS = ["no_detection", "close_up", "box_too_small", "mask_too_small", "mask_too_large"]
 
     def _summary(name, rows):
         reasons = Counter(r["reason"] for r in rows if r["verdict"] == "removed")

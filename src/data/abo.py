@@ -18,6 +18,20 @@ the category path ("leaf") matches a regular expression; this splits mixed produ
 example HOME_FURNITURE_AND_DECOR contains TV stands and carts). The first matching rule wins.
 Models that no rule matches are not used.
 
+Class overrides: some products have a wrong product type in Amazon's metadata (for example a sofa
+labelled CHAIR). The class overrides in `configs/data.yaml` (`data.abo.class_overrides`) map such a
+product id to its correct class, and `select` uses that class instead of the class rules. Why a list
+in the settings, and not an edit of the metadata files: the metadata is downloaded and not kept in
+git, so an edit would be lost with a new download, and nobody could see what was changed or why.
+The comments next to the list give the reason for each product.
+
+To apply a changed list to downloaded data, run the download step again with the stages
+"meshes photos catalog". The selection then gives the corrected products their new mesh ids; the
+meshes and photos stages fetch their files into the folders of the new class (all other files are
+skipped); and the catalog stage writes the new catalog rows. Files in the folder of the old class
+are no longer used and can be deleted. Do this before the ABO meshes are rendered, because the
+class is also part of the render folder.
+
 Identifiers used by the project:
 
 - A mesh is identified as "abo/<class>/<model id>", for example "abo/chair/B07B4FZN9H".
@@ -165,6 +179,7 @@ def select(
     images: dict[str, dict],
     rules: list[dict],
     max_models_per_class: int | None = None,
+    class_overrides: dict[str, str] | None = None,
 ) -> tuple[list[AboMesh], list[AboImage]]:
     """Select the models of our classes and their photos.
 
@@ -175,18 +190,33 @@ def select(
         rules: The class rules (`data.abo.class_rules`).
         max_models_per_class: None = every model; otherwise the first N model ids of each class in
             sorted order.
+        class_overrides: Product id -> correct class, for products with a wrong product type in the
+            metadata (`data.abo.class_overrides`; see the module description). An override wins over
+            the class rules. The AboMesh keeps Amazon's product type, so the correction stays visible.
 
     Returns:
         meshes: One AboMesh per selected model, sorted by mesh id.
         photos: One AboImage per distinct photo of the selected models, sorted by image id. Photo
             ids that are missing from images.csv are left out.
+
+    Raises:
+        ValueError: If an override names a product id without a 3D model, or a class that no class
+            rule gives (both are most likely typing errors in the settings).
     """
+    class_overrides = class_overrides or {}
+    unknown_ids = sorted(set(class_overrides) - set(models))
+    known_classes = {rule["class"] for rule in rules}
+    unknown_classes = sorted(set(class_overrides.values()) - known_classes)
+    if unknown_ids or unknown_classes:
+        raise ValueError(f"class overrides: unknown product ids {unknown_ids}, unknown classes {unknown_classes}")
+
     by_class: dict[str, list[AboMesh]] = defaultdict(list)
     for model_id in sorted(models):
         listing = listings.get(model_id)
         if listing is None:
             continue
-        category = class_of(listing["product_type"], listing["leaf"], rules)
+        # The override (if there is one) replaces the class that the rules give for Amazon's label.
+        category = class_overrides.get(model_id) or class_of(listing["product_type"], listing["leaf"], rules)
         if category is None:
             continue
         model = models[model_id]

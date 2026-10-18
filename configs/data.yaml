@@ -61,3 +61,26 @@ data:
       - {product_type: HOME, leaf: "Baskets, Bins", class: basket_bin}
       - {product_type: HOME, leaf: "Space Heaters", class: space_heater}
       - {product_type: CLOCK, class: clock}
+    # Class overrides: product id (ASIN) -> class. They correct products whose Amazon metadata has a
+    # wrong product type. An override wins over the class rules; Amazon's files stay unchanged.
+    #
+    # What they do: `abo.select` (src/data/abo.py) looks up each product id here before it applies the
+    # class rules. The class of an override is used for everything that comes after: the mesh id
+    # ("abo/sofa/B07BWK7FXW"), the folders of the mesh and photo files, the catalog, and the renders.
+    # The manifest keeps Amazon's own product type in its "product_type" column, so the correction
+    # stays visible.
+    #
+    # Why here and not in the metadata files: data/raw/ is not in git, so a new download would bring
+    # back the wrong labels without a warning; an edit inside the gzipped files has no record of what
+    # changed or why; and the raw files stay a reference copy of what the dataset authors published.
+    #
+    # How they were found: these products have the same geometry as another product (colour variants
+    # of one item; see src/pipeline/catalog_abo_meshes.py), but Amazon gives the copies different
+    # product types. The product names show which label is correct. Every wrong copy is listed, so
+    # that each geometry group has one class. Add a product here when a check shows another wrong
+    # label, and run the catalog stage again (see the module description of src/data/abo.py).
+    class_overrides:
+      B07BWK7FXW: sofa      # "Stone & Beam Andover Leather Left-Facing Sofa-Chaise Sectional"; Amazon: CHAIR
+      B07BWMSLWY: sofa      # the same sofa in another colour; Amazon: CHAIR (a third colour is SOFA)
+      B07QSC1TBQ: chair     # "Movian Arendsee Dining Chairs"; Amazon: STOOL_SEATING (its copy is CHAIR)
+      B079VNL3GM: dresser   # "Movian High Gloss 2 Drawer Bedside Cabinet" (a nightstand with drawers); Amazon: TABLE

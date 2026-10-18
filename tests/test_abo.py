@@ -1,5 +1,7 @@
 """Tests for src/data/abo.py, on small synthetic metadata (no download needed)."""
 
+import pytest
+
 from src.data import abo
 
 RULES = [
@@ -42,3 +44,24 @@ def test_cap_per_class_and_manifest_round_trip(tmp_path):
     assert [m.model_id for m in meshes] == ["B0", "B1"]
     abo.write_manifest(meshes, photos, tmp_path)
     assert abo.read_manifest(tmp_path) == (meshes, photos)
+
+
+def test_class_override_wins_over_the_rules_and_keeps_amazons_label():
+    models = {"B1": _model("1/B1.glb"), "B2": _model("2/B2.glb")}
+    listings = {
+        "B1": {"product_type": "CHAIR", "leaf": "", "image_ids": ["i1"]},  # a sofa with a wrong label
+        "B2": {"product_type": "RUG", "leaf": "", "image_ids": []},  # no rule; the override adds it
+    }
+    images = {"i1": {"path": "x/i1.jpg", "width": 10, "height": 10}}
+    rules = RULES + [{"product_type": "SOFA", "class": "sofa"}]
+    meshes, photos = abo.select(models, listings, images, rules, class_overrides={"B1": "sofa", "B2": "chair"})
+    assert [(m.mesh_id, m.product_type) for m in meshes] == [("abo/chair/B2", "RUG"), ("abo/sofa/B1", "CHAIR")]
+    assert photos[0].category == "sofa" and photos[0].mesh_ids == ["abo/sofa/B1"]
+
+
+@pytest.mark.parametrize("overrides", [{"B9": "chair"}, {"B1": "sofaa"}])
+def test_class_override_with_unknown_id_or_class_is_an_error(overrides):
+    models = {"B1": _model("1/B1.glb")}
+    listings = {"B1": {"product_type": "CHAIR", "leaf": "", "image_ids": []}}
+    with pytest.raises(ValueError):
+        abo.select(models, listings, {}, RULES, class_overrides=overrides)

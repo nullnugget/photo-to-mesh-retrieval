@@ -70,7 +70,7 @@ def download_metadata(fetcher: Fetcher, folder: Path) -> dict:
 
 
 def select_from_metadata(folder: Path, data_cfg: dict, mini: bool) -> tuple[list, list]:
-    """Read the metadata, apply the class rules, and (for a mini run) keep 3 meshes per class."""
+    """Read the metadata, apply the class rules and overrides, and (for a mini run) keep 3 meshes per class."""
     abo_cfg = data_cfg["abo"]
     meshes, photos = abo.select(
         abo.read_models(folder / "3dmodels.csv.gz"),
@@ -78,6 +78,7 @@ def select_from_metadata(folder: Path, data_cfg: dict, mini: bool) -> tuple[list
         abo.read_images(folder / "images.csv.gz"),
         abo_cfg["class_rules"],
         abo_cfg["max_models_per_class"],
+        abo_cfg.get("class_overrides"),
     )
     if mini:
         taken: Counter = Counter()

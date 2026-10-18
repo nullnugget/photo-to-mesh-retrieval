@@ -98,3 +98,9 @@ def test_paths_are_absolute_and_inside_the_repository():
     with pytest.raises(ValueError):
         paths.features_file("dinov3_vitb16", "photos")
     assert paths.resolve("configs/data.yaml") == paths.ROOT / "configs" / "data.yaml"
+
+
+def test_abo_class_overrides_name_known_classes():
+    abo_cfg = load_config()["data"]["abo"]
+    classes = {r["class"] for r in abo_cfg["class_rules"]}
+    assert set(abo_cfg["class_overrides"].values()) <= classes

@@ -14,7 +14,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Lighting test
+    # 04: Lighting test
 
     **Question:** which light setup makes the grey renders look most like the photos, to the
     backbone? The renders are the only view of a mesh that the model gets, and in a grey render
@@ -65,8 +65,8 @@ def _(mo):
     - results: `runs/<date>_pix3d_<backbone>_lighting_test/` (settings, metrics, contact sheets),
       written by the last section.
 
-    **How to run:** `marimo edit notebooks/lighting_test.py`, then press the buttons in sections 3,
-    7, and 10. As a script (`python notebooks/lighting_test.py`), all steps run and the results are
+    **How to run:** `marimo edit notebooks/04_lighting_test.py`, then press the buttons in sections 3,
+    7, and 10. As a script (`python notebooks/04_lighting_test.py`), all steps run and the results are
     saved. The gallery features take about 25 minutes the first time; later runs load them.
     """)
     return
@@ -81,9 +81,11 @@ def _(mo):
 
     | Setting | Value | Meaning |
     |:---|:---|:---|
-    | `MESHES_PER_CATEGORY` | 3 | Meshes sampled from each of the 9 Pix3D categories, for the contact sheet and the image statistics |
-    | `MIN_PHOTOS` | 3 | A sampled mesh needs at least this many non-test photos |
-    | `MAX_PHOTOS_PER_MESH` | 30 | Photos per sampled mesh used for the image statistics |
+    | gallery (fixed) | all Pix3D meshes (395) | The meshes that each query is searched against, for the retrieval results |
+    | queries (fixed) | all non-test Pix3D photos (8,557) | The photos that are searched with, for the retrieval results |
+    | `SAMPLE_MESHES_PER_CATEGORY` | 3 | Size of the small sample (27 meshes) that is saved as images, only for the contact sheet and the image statistics |
+    | `SAMPLE_MIN_PHOTOS` | 3 | A mesh of the small sample needs at least this many non-test photos |
+    | `SAMPLE_PHOTOS_PER_MESH` | 30 | Photos per sample mesh used for the image statistics (at most) |
     | `SEED` | 0 | Fixed seed of the random sample |
     | `QUERY_CHUNK` | 512 | Query photos read and turned into features at once (limits the memory) |
     | `LIGHTS` | L0 ... L4, L2_bright, L2_dark | The light setups to compare (all presets in `configs/render.yaml`) |
@@ -120,9 +122,9 @@ def _():
     from src.runs import git_state, make_run_name  # noqa: E402
 
     CFG = load_config()
-    MESHES_PER_CATEGORY = 3
-    MIN_PHOTOS = 3
-    MAX_PHOTOS_PER_MESH = 30
+    SAMPLE_MESHES_PER_CATEGORY = 3
+    SAMPLE_MIN_PHOTOS = 3
+    SAMPLE_PHOTOS_PER_MESH = 30
     SEED = 0
     QUERY_CHUNK = 512
     LIGHTS = list(CFG["render"]["lighting_presets"])
@@ -139,9 +141,9 @@ def _():
         Image,
         ImageDraw,
         LIGHTS,
-        MAX_PHOTOS_PER_MESH,
-        MESHES_PER_CATEGORY,
-        MIN_PHOTOS,
+        SAMPLE_PHOTOS_PER_MESH,
+        SAMPLE_MESHES_PER_CATEGORY,
+        SAMPLE_MIN_PHOTOS,
         MeshRenderer,
         QUERY_CHUNK,
         RENDER_DIR,
@@ -193,9 +195,9 @@ def _(mo):
 
 @app.cell
 def _(
-    MAX_PHOTOS_PER_MESH,
-    MESHES_PER_CATEGORY,
-    MIN_PHOTOS,
+    SAMPLE_PHOTOS_PER_MESH,
+    SAMPLE_MESHES_PER_CATEGORY,
+    SAMPLE_MIN_PHOTOS,
     SEED,
     load_split,
     mo,
@@ -216,12 +218,12 @@ def _(
     sample_meshes, sample_queries, _rows = [], [], []
     for _category in sorted({m["category"] for m in _meshes}):
         _pool = sorted(
-            (m for m in _meshes if m["category"] == _category and len(_photos_of.get(m["mesh_id"], [])) >= MIN_PHOTOS),
+            (m for m in _meshes if m["category"] == _category and len(_photos_of.get(m["mesh_id"], [])) >= SAMPLE_MIN_PHOTOS),
             key=lambda m: m["mesh_id"],
         )
-        for _mesh in _rng.sample(_pool, min(MESHES_PER_CATEGORY, len(_pool))):
+        for _mesh in _rng.sample(_pool, min(SAMPLE_MESHES_PER_CATEGORY, len(_pool))):
             _photos = sorted(_photos_of[_mesh["mesh_id"]], key=lambda q: q["query_id"])
-            _used = _rng.sample(_photos, min(MAX_PHOTOS_PER_MESH, len(_photos)))
+            _used = _rng.sample(_photos, min(SAMPLE_PHOTOS_PER_MESH, len(_photos)))
             sample_meshes.append(_mesh)
             sample_queries.extend(_used)
             _rows.append({"category": _category, "mesh_id": _mesh["mesh_id"], "photos_available": len(_photos), "photos_used": len(_used)})
@@ -660,8 +662,8 @@ def _(mo):
 def _(
     ALPHA,
     CFG,
-    MAX_PHOTOS_PER_MESH,
-    MESHES_PER_CATEGORY,
+    SAMPLE_PHOTOS_PER_MESH,
+    SAMPLE_MESHES_PER_CATEGORY,
     SEED,
     category_rows,
     chart,
@@ -698,7 +700,7 @@ def _(
         "gallery_meshes": len(gallery_meshes),
         "queries": len(all_queries),
         "query_set": "pix3d seen_meshes train + val (test excluded)",
-        "sample": {"seed": SEED, "meshes_per_category": MESHES_PER_CATEGORY, "max_photos_per_mesh": MAX_PHOTOS_PER_MESH,
+        "sample": {"seed": SEED, "meshes_per_category": SAMPLE_MESHES_PER_CATEGORY, "max_photos_per_mesh": SAMPLE_PHOTOS_PER_MESH,
                    "meshes": [m["mesh_id"] for m in sample_meshes], "photos": [q["query_id"] for q in sample_queries]},
         "alpha": ALPHA,
         "image_statistics": image_statistics,

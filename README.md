@@ -59,6 +59,7 @@ Each pipeline step is a Python script in `scripts/`. Run it from the repository 
 |---|---|---|
 | ABO metadata, mesh geometry, and photos | `scripts/01_download_abo.py` | available |
 | Query images, catalog, and splits | `scripts/03_make_queries.py --dataset pix3d` | available |
+| Renders (25 grey views per mesh) | `scripts/04_render.py --dataset pix3d` | available |
 | Other steps | n/a | to be written |
 
 ## Data and model credits

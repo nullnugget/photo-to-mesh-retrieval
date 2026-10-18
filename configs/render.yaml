@@ -23,7 +23,7 @@ render:
     use_textures: false              # false = ignore the mesh textures; all meshes look the same grey
     normals: crease                  # crease = smooth, but sharp edges stay sharp; smooth = all edges blended; flat = one normal per triangle
     crease_deg: 30                   # in crease mode: neighbouring triangles that meet at a larger angle are not blended
-  lighting: L2                       # name of the active preset below
+  lighting: L2_dark                  # name of the active preset below (chosen by the lighting test: zero-shot R@1 67.7 %)
   lighting_presets:                  # light setups to compare; select one with --set render.lighting=<name>
     L0: {type: point_at_camera, ambient: 0.5, diffuse: 0.3, specular: 0.2}            # the v1 setup
     L1: {type: point_at_camera, ambient: 0.35, diffuse: 0.55, specular: 0.05}         # v1 position, less glare

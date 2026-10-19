@@ -34,7 +34,6 @@ View dropout: during training, the aggregator sees a random 12 to 25 views of ea
 (`random_view_mask`), so that it does not depend on any single view.
 """
 
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

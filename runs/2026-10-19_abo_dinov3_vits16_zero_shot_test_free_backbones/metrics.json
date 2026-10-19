@@ -1,0 +1,693 @@
+{
+  "run_name": "2026-10-19_abo_dinov3_vits16_zero_shot_test_free_backbones",
+  "date": "2026-10-19T16:04:16+05:30",
+  "git_commit": "0c37d660bc402be80049d811a44b8a67de8e9013",
+  "git_dirty": true,
+  "mode": "zero_shot",
+  "dataset": "abo",
+  "photos": "test_free",
+  "split": null,
+  "photo_count": 11991,
+  "backbone": "dinov3_vits16",
+  "feature_files": {
+    "data/derived/features/dinov3_vits16/abo_renders.npz": "4ea92157c259480ca81cc4c902e6b54f151284c37bf8e1fb9878f9f9c2069b6e",
+    "data/derived/features/dinov3_vits16/abo_queries_sam.npz": "20778479db54cc7deb1163ab315e9c14c6990122f74575d301efc335b934139d"
+  },
+  "lighting": "L2_dark",
+  "rig": "rings25",
+  "mini": false,
+  "results": [
+    {
+      "query_set": "queries_sam",
+      "recipe": "cls",
+      "scoring": "view",
+      "alpha": null,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.29738970894837796,
+      "R@5": 0.5995329830706363,
+      "R@10": 0.6986906846801768,
+      "photos": 11991,
+      "gallery_meshes": 4393,
+      "R@1_low": 0.28913143190726376,
+      "R@1_high": 0.305479109331999,
+      "cat@1": 0.8403802852139104,
+      "R@1_inside_category": 0.32874655991993995,
+      "macro_R@1": 0.3788887759384296,
+      "per_category": {
+        "air_conditioner": {
+          "queries": 19,
+          "R@1": 0.47368421052631576
+        },
+        "basket_bin": {
+          "queries": 21,
+          "R@1": 0.42857142857142855
+        },
+        "bean_bag": {
+          "queries": 22,
+          "R@1": 0.13636363636363635
+        },
+        "bed": {
+          "queries": 325,
+          "R@1": 0.22153846153846155
+        },
+        "bench": {
+          "queries": 117,
+          "R@1": 0.4188034188034188
+        },
+        "cabinet": {
+          "queries": 439,
+          "R@1": 0.3120728929384966
+        },
+        "cart": {
+          "queries": 108,
+          "R@1": 0.5462962962962963
+        },
+        "chair": {
+          "queries": 3579,
+          "R@1": 0.2967309304274937
+        },
+        "clock": {
+          "queries": 21,
+          "R@1": 0.5714285714285714
+        },
+        "clothes_rack": {
+          "queries": 88,
+          "R@1": 0.3522727272727273
+        },
+        "desk": {
+          "queries": 521,
+          "R@1": 0.4126679462571977
+        },
+        "dresser": {
+          "queries": 188,
+          "R@1": 0.324468085106383
+        },
+        "dumbbell": {
+          "queries": 44,
+          "R@1": 0.25
+        },
+        "fan": {
+          "queries": 77,
+          "R@1": 0.42857142857142855
+        },
+        "ladder": {
+          "queries": 25,
+          "R@1": 0.52
+        },
+        "ottoman": {
+          "queries": 807,
+          "R@1": 0.21437422552664187
+        },
+        "shelf": {
+          "queries": 273,
+          "R@1": 0.4432234432234432
+        },
+        "sofa": {
+          "queries": 2466,
+          "R@1": 0.16707218167072183
+        },
+        "space_heater": {
+          "queries": 46,
+          "R@1": 0.5434782608695652
+        },
+        "stool": {
+          "queries": 1011,
+          "R@1": 0.2512363996043521
+        },
+        "storage_box": {
+          "queries": 60,
+          "R@1": 0.43333333333333335
+        },
+        "table": {
+          "queries": 1629,
+          "R@1": 0.4444444444444444
+        },
+        "tv_stand": {
+          "queries": 105,
+          "R@1": 0.5238095238095238
+        }
+      },
+      "subsets": {}
+    },
+    {
+      "query_set": "queries_sam",
+      "recipe": "cls",
+      "scoring": "combined",
+      "alpha": 0.75,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.30906513218247017,
+      "R@5": 0.6101242598615628,
+      "R@10": 0.70778083562672,
+      "photos": 11991,
+      "gallery_meshes": 4393,
+      "R@1_low": 0.3011404386623301,
+      "R@1_high": 0.31724001334334084,
+      "cat@1": 0.8411308481361021,
+      "R@1_inside_category": 0.34175631723792843,
+      "macro_R@1": 0.3862736249120631,
+      "per_category": {
+        "air_conditioner": {
+          "queries": 19,
+          "R@1": 0.42105263157894735
+        },
+        "basket_bin": {
+          "queries": 21,
+          "R@1": 0.42857142857142855
+        },
+        "bean_bag": {
+          "queries": 22,
+          "R@1": 0.13636363636363635
+        },
+        "bed": {
+          "queries": 325,
+          "R@1": 0.23692307692307693
+        },
+        "bench": {
+          "queries": 117,
+          "R@1": 0.4017094017094017
+        },
+        "cabinet": {
+          "queries": 439,
+          "R@1": 0.31662870159453305
+        },
+        "cart": {
+          "queries": 108,
+          "R@1": 0.5555555555555556
+        },
+        "chair": {
+          "queries": 3579,
+          "R@1": 0.31126012852752166
+        },
+        "clock": {
+          "queries": 21,
+          "R@1": 0.5714285714285714
+        },
+        "clothes_rack": {
+          "queries": 88,
+          "R@1": 0.4090909090909091
+        },
+        "desk": {
+          "queries": 521,
+          "R@1": 0.3915547024952015
+        },
+        "dresser": {
+          "queries": 188,
+          "R@1": 0.30851063829787234
+        },
+        "dumbbell": {
+          "queries": 44,
+          "R@1": 0.25
+        },
+        "fan": {
+          "queries": 77,
+          "R@1": 0.4675324675324675
+        },
+        "ladder": {
+          "queries": 25,
+          "R@1": 0.56
+        },
+        "ottoman": {
+          "queries": 807,
+          "R@1": 0.21313506815365552
+        },
+        "shelf": {
+          "queries": 273,
+          "R@1": 0.4725274725274725
+        },
+        "sofa": {
+          "queries": 2466,
+          "R@1": 0.18329278183292783
+        },
+        "space_heater": {
+          "queries": 46,
+          "R@1": 0.5434782608695652
+        },
+        "stool": {
+          "queries": 1011,
+          "R@1": 0.2818991097922849
+        },
+        "storage_box": {
+          "queries": 60,
+          "R@1": 0.45
+        },
+        "table": {
+          "queries": 1629,
+          "R@1": 0.4499693063228975
+        },
+        "tv_stand": {
+          "queries": 105,
+          "R@1": 0.5238095238095238
+        }
+      },
+      "subsets": {}
+    },
+    {
+      "query_set": "queries_sam",
+      "recipe": "masked_mean",
+      "scoring": "view",
+      "alpha": null,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.250688016012009,
+      "R@5": 0.5228087732466016,
+      "R@10": 0.6260528729880744,
+      "photos": 11991,
+      "gallery_meshes": 4393,
+      "R@1_low": 0.24251313485113835,
+      "R@1_high": 0.25827704111416894,
+      "cat@1": 0.8236177132849637,
+      "R@1_inside_category": 0.2837961804686848,
+      "macro_R@1": 0.3396046054705187,
+      "per_category": {
+        "air_conditioner": {
+          "queries": 19,
+          "R@1": 0.5263157894736842
+        },
+        "basket_bin": {
+          "queries": 21,
+          "R@1": 0.38095238095238093
+        },
+        "bean_bag": {
+          "queries": 22,
+          "R@1": 0.13636363636363635
+        },
+        "bed": {
+          "queries": 325,
+          "R@1": 0.15384615384615385
+        },
+        "bench": {
+          "queries": 117,
+          "R@1": 0.38461538461538464
+        },
+        "cabinet": {
+          "queries": 439,
+          "R@1": 0.2460136674259681
+        },
+        "cart": {
+          "queries": 108,
+          "R@1": 0.5648148148148148
+        },
+        "chair": {
+          "queries": 3579,
+          "R@1": 0.23665828443699358
+        },
+        "clock": {
+          "queries": 21,
+          "R@1": 0.47619047619047616
+        },
+        "clothes_rack": {
+          "queries": 88,
+          "R@1": 0.3522727272727273
+        },
+        "desk": {
+          "queries": 521,
+          "R@1": 0.3550863723608445
+        },
+        "dresser": {
+          "queries": 188,
+          "R@1": 0.24468085106382978
+        },
+        "dumbbell": {
+          "queries": 44,
+          "R@1": 0.1590909090909091
+        },
+        "fan": {
+          "queries": 77,
+          "R@1": 0.44155844155844154
+        },
+        "ladder": {
+          "queries": 25,
+          "R@1": 0.48
+        },
+        "ottoman": {
+          "queries": 807,
+          "R@1": 0.18711276332094176
+        },
+        "shelf": {
+          "queries": 273,
+          "R@1": 0.46153846153846156
+        },
+        "sofa": {
+          "queries": 2466,
+          "R@1": 0.13990267639902676
+        },
+        "space_heater": {
+          "queries": 46,
+          "R@1": 0.5217391304347826
+        },
+        "stool": {
+          "queries": 1011,
+          "R@1": 0.2215628090999011
+        },
+        "storage_box": {
+          "queries": 60,
+          "R@1": 0.31666666666666665
+        },
+        "table": {
+          "queries": 1629,
+          "R@1": 0.37630448127685695
+        },
+        "tv_stand": {
+          "queries": 105,
+          "R@1": 0.44761904761904764
+        }
+      },
+      "subsets": {}
+    },
+    {
+      "query_set": "queries_sam",
+      "recipe": "masked_mean",
+      "scoring": "combined",
+      "alpha": 0.75,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.25360687182053204,
+      "R@5": 0.5191393545158869,
+      "R@10": 0.6248019347844217,
+      "photos": 11991,
+      "gallery_meshes": 4393,
+      "R@1_low": 0.24568426319739806,
+      "R@1_high": 0.2610311900592111,
+      "cat@1": 0.8195313151530315,
+      "R@1_inside_category": 0.28504711867233756,
+      "macro_R@1": 0.3498231462345556,
+      "per_category": {
+        "air_conditioner": {
+          "queries": 19,
+          "R@1": 0.5263157894736842
+        },
+        "basket_bin": {
+          "queries": 21,
+          "R@1": 0.42857142857142855
+        },
+        "bean_bag": {
+          "queries": 22,
+          "R@1": 0.13636363636363635
+        },
+        "bed": {
+          "queries": 325,
+          "R@1": 0.1753846153846154
+        },
+        "bench": {
+          "queries": 117,
+          "R@1": 0.37606837606837606
+        },
+        "cabinet": {
+          "queries": 439,
+          "R@1": 0.24829157175398633
+        },
+        "cart": {
+          "queries": 108,
+          "R@1": 0.6018518518518519
+        },
+        "chair": {
+          "queries": 3579,
+          "R@1": 0.23889354568315171
+        },
+        "clock": {
+          "queries": 21,
+          "R@1": 0.47619047619047616
+        },
+        "clothes_rack": {
+          "queries": 88,
+          "R@1": 0.3522727272727273
+        },
+        "desk": {
+          "queries": 521,
+          "R@1": 0.345489443378119
+        },
+        "dresser": {
+          "queries": 188,
+          "R@1": 0.2553191489361702
+        },
+        "dumbbell": {
+          "queries": 44,
+          "R@1": 0.20454545454545456
+        },
+        "fan": {
+          "queries": 77,
+          "R@1": 0.5194805194805194
+        },
+        "ladder": {
+          "queries": 25,
+          "R@1": 0.48
+        },
+        "ottoman": {
+          "queries": 807,
+          "R@1": 0.1771995043370508
+        },
+        "shelf": {
+          "queries": 273,
+          "R@1": 0.4835164835164835
+        },
+        "sofa": {
+          "queries": 2466,
+          "R@1": 0.13463098134630982
+        },
+        "space_heater": {
+          "queries": 46,
+          "R@1": 0.5217391304347826
+        },
+        "stool": {
+          "queries": 1011,
+          "R@1": 0.2324431256181998
+        },
+        "storage_box": {
+          "queries": 60,
+          "R@1": 0.31666666666666665
+        },
+        "table": {
+          "queries": 1629,
+          "R@1": 0.3861264579496624
+        },
+        "tv_stand": {
+          "queries": 105,
+          "R@1": 0.42857142857142855
+        }
+      },
+      "subsets": {}
+    },
+    {
+      "query_set": "queries_sam",
+      "recipe": "cls_masked_mean",
+      "scoring": "view",
+      "alpha": null,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.2892169126845134,
+      "R@5": 0.5894420815611708,
+      "R@10": 0.6933533483445917,
+      "photos": 11991,
+      "gallery_meshes": 4393,
+      "R@1_low": 0.28112542740388624,
+      "R@1_high": 0.29705821032441,
+      "cat@1": 0.8369610541239263,
+      "R@1_inside_category": 0.31973980485364023,
+      "macro_R@1": 0.3679368142322076,
+      "per_category": {
+        "air_conditioner": {
+          "queries": 19,
+          "R@1": 0.47368421052631576
+        },
+        "basket_bin": {
+          "queries": 21,
+          "R@1": 0.42857142857142855
+        },
+        "bean_bag": {
+          "queries": 22,
+          "R@1": 0.09090909090909091
+        },
+        "bed": {
+          "queries": 325,
+          "R@1": 0.20923076923076922
+        },
+        "bench": {
+          "queries": 117,
+          "R@1": 0.39316239316239315
+        },
+        "cabinet": {
+          "queries": 439,
+          "R@1": 0.296127562642369
+        },
+        "cart": {
+          "queries": 108,
+          "R@1": 0.5462962962962963
+        },
+        "chair": {
+          "queries": 3579,
+          "R@1": 0.28611343950824253
+        },
+        "clock": {
+          "queries": 21,
+          "R@1": 0.47619047619047616
+        },
+        "clothes_rack": {
+          "queries": 88,
+          "R@1": 0.375
+        },
+        "desk": {
+          "queries": 521,
+          "R@1": 0.40307101727447214
+        },
+        "dresser": {
+          "queries": 188,
+          "R@1": 0.2872340425531915
+        },
+        "dumbbell": {
+          "queries": 44,
+          "R@1": 0.18181818181818182
+        },
+        "fan": {
+          "queries": 77,
+          "R@1": 0.4935064935064935
+        },
+        "ladder": {
+          "queries": 25,
+          "R@1": 0.48
+        },
+        "ottoman": {
+          "queries": 807,
+          "R@1": 0.20198265179677818
+        },
+        "shelf": {
+          "queries": 273,
+          "R@1": 0.4542124542124542
+        },
+        "sofa": {
+          "queries": 2466,
+          "R@1": 0.16423357664233576
+        },
+        "space_heater": {
+          "queries": 46,
+          "R@1": 0.6086956521739131
+        },
+        "stool": {
+          "queries": 1011,
+          "R@1": 0.2433234421364985
+        },
+        "storage_box": {
+          "queries": 60,
+          "R@1": 0.4
+        },
+        "table": {
+          "queries": 1629,
+          "R@1": 0.4358502148557397
+        },
+        "tv_stand": {
+          "queries": 105,
+          "R@1": 0.5333333333333333
+        }
+      },
+      "subsets": {}
+    },
+    {
+      "query_set": "queries_sam",
+      "recipe": "cls_masked_mean",
+      "scoring": "combined",
+      "alpha": 0.75,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.29989158535568344,
+      "R@5": 0.5956967725794345,
+      "R@10": 0.6983571011592027,
+      "photos": 11991,
+      "gallery_meshes": 4393,
+      "R@1_low": 0.2918021849720624,
+      "R@1_high": 0.30773288299558005,
+      "cat@1": 0.8401300975731799,
+      "R@1_inside_category": 0.33124843632724543,
+      "macro_R@1": 0.3807584695593308,
+      "per_category": {
+        "air_conditioner": {
+          "queries": 19,
+          "R@1": 0.47368421052631576
+        },
+        "basket_bin": {
+          "queries": 21,
+          "R@1": 0.42857142857142855
+        },
+        "bean_bag": {
+          "queries": 22,
+          "R@1": 0.13636363636363635
+        },
+        "bed": {
+          "queries": 325,
+          "R@1": 0.2276923076923077
+        },
+        "bench": {
+          "queries": 117,
+          "R@1": 0.39316239316239315
+        },
+        "cabinet": {
+          "queries": 439,
+          "R@1": 0.2870159453302961
+        },
+        "cart": {
+          "queries": 108,
+          "R@1": 0.5833333333333334
+        },
+        "chair": {
+          "queries": 3579,
+          "R@1": 0.2933780385582565
+        },
+        "clock": {
+          "queries": 21,
+          "R@1": 0.47619047619047616
+        },
+        "clothes_rack": {
+          "queries": 88,
+          "R@1": 0.38636363636363635
+        },
+        "desk": {
+          "queries": 521,
+          "R@1": 0.3934740882917466
+        },
+        "dresser": {
+          "queries": 188,
+          "R@1": 0.2872340425531915
+        },
+        "dumbbell": {
+          "queries": 44,
+          "R@1": 0.22727272727272727
+        },
+        "fan": {
+          "queries": 77,
+          "R@1": 0.4935064935064935
+        },
+        "ladder": {
+          "queries": 25,
+          "R@1": 0.56
+        },
+        "ottoman": {
+          "queries": 807,
+          "R@1": 0.2057001239157373
+        },
+        "shelf": {
+          "queries": 273,
+          "R@1": 0.4981684981684982
+        },
+        "sofa": {
+          "queries": 2466,
+          "R@1": 0.17842660178426603
+        },
+        "space_heater": {
+          "queries": 46,
+          "R@1": 0.5869565217391305
+        },
+        "stool": {
+          "queries": 1011,
+          "R@1": 0.27200791295746785
+        },
+        "storage_box": {
+          "queries": 60,
+          "R@1": 0.4166666666666667
+        },
+        "table": {
+          "queries": 1629,
+          "R@1": 0.44751381215469616
+        },
+        "tv_stand": {
+          "queries": 105,
+          "R@1": 0.5047619047619047
+        }
+      },
+      "subsets": {}
+    }
+  ]
+}

@@ -177,15 +177,18 @@ def _(mo):
     ## 3. Report and completeness
 
     The next cell reads the report and the results table of the step, and joins each row with its
-    catalog row (photo, reference mask, mesh, and the Pix3D flags).
+    catalog row (photo, reference mask, mesh, and the Pix3D flags). The table also holds the rows of
+    the test photos (made for the final result); the cell leaves them out, so that every value below
+    comes from the tuning photos only.
 
     | Field | Meaning | Expected |
     |:---|:---|:---|
     | `photos` | Photos the last run was asked to segment | 8,557 (full), 27 (mini) |
     | `prompt` | Where SAM's box came from | reference_box |
     | `box_mask` | Which of SAM's masks is kept (`segment.segmenter.box_mask`) | single |
-    | `status` | Rows per status over all runs (done, failed) | no failed |
-    | `with_mask_file` | Rows whose mask file exists | = photos |
+    | `status` | Rows per status over all runs (done, failed), test photos included | no failed |
+    | `test_rows_left_out` | Rows of test photos that the checks below do not use | 1,510 (full); a few (mini: its photos come from all parts) |
+    | `with_mask_file` | Tuning rows whose mask file exists | = photos |
     """)
     return
 
@@ -196,10 +199,11 @@ def _(Counter, OUTPUTS, json, mo, outputs_choice, paths, read_table, segment_pho
     REPORT = json.loads(segment_photos.report_file("pix3d", ROOT).read_text())
     _catalog = {q["query_id"]: q for q in read_table(paths.QUERIES_CSV)}
     _results = read_table(segment_photos.results_file("pix3d", ROOT))
-    # One record per photo with an IoU: the results row, the catalog row, and the mask file.
+    _tuning = {item.photo_id for item in segment_photos.pix3d_items("seen_meshes", ["train", "val"])}
+    # One record per tuning photo with an IoU: the results row, the catalog row, and the mask file.
     ROWS = []
     for _row in _results:
-        if _row["iou"] in ("", None):
+        if _row["iou"] in ("", None) or _row["photo_id"] not in _tuning:
             continue
         _query = _catalog[_row["photo_id"]]
         ROWS.append({
@@ -214,6 +218,7 @@ def _(Counter, OUTPUTS, json, mo, outputs_choice, paths, read_table, segment_pho
         "prompt": REPORT["prompt"],
         "box_mask": REPORT["box_mask"],
         "status": dict(Counter(r["status"] for r in _results)),
+        "test_rows_left_out": sum(r["photo_id"] not in _tuning for r in _results),
         "with_mask_file": sum(r["sam_mask_path"].exists() for r in ROWS),
     }
     print("REPORT", _summary)

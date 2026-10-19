@@ -32,3 +32,5 @@ def test_skipped_meshes_keep_their_earlier_results(tmp_path):
     assert [(r["mesh_id"], r["status"], str(r["overflow_retries"])) for r in merged] == [("a", "done", "2"), ("b", "done", "0")]
     with open(path, newline="") as f:
         assert len(list(csv.DictReader(f))) == 2
+    merged = render_meshes._merge_results(path, [{"mesh_id": "c", "status": "done", "overflow_retries": 0, **row}])
+    assert [r["mesh_id"] for r in merged] == ["a", "b", "c"]  # a run on other meshes keeps the earlier rows

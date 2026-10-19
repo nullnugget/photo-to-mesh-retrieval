@@ -76,17 +76,25 @@ def render_results_file(dataset: str, root: Path = paths.RENDERS_DIR) -> Path:
 
 
 def _merge_results(path: Path, new_rows: list[dict]) -> list[dict]:
-    """Update the result table: a skipped mesh keeps its earlier row; the other meshes get the new row."""
-    old = {}
+    """Update the result table with the rows of this run; return all rows of the table.
+
+    - A mesh of this run gets its new row, but a skipped mesh keeps its earlier row (the skipped
+      row has no values).
+    - A mesh that is not in this run keeps its earlier row (for example, after a run on some
+      categories only).
+    """
+    merged: dict[str, dict] = {}
     if path.exists():
         with open(path, newline="") as f:
-            old = {row["mesh_id"]: row for row in csv.DictReader(f)}
-    merged = [old.get(row["mesh_id"], row) if row["status"] == "skipped" else row for row in new_rows]
+            merged = {row["mesh_id"]: row for row in csv.DictReader(f)}
+    for row in new_rows:
+        if row["status"] != "skipped" or row["mesh_id"] not in merged:
+            merged[row["mesh_id"]] = row
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS)
         writer.writeheader()
-        writer.writerows(merged)
-    return merged
+        writer.writerows(merged.values())
+    return list(merged.values())
 
 
 def _check_settings(render_cfg: dict, root: Path, overwrite: bool) -> None:

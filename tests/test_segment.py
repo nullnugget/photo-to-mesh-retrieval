@@ -9,8 +9,9 @@ import pytest
 from PIL import Image
 
 from src.config import load_config, save_config
-from src.pipeline.segment_photos import (KEPT, REMOVED, SegmentSettingsChanged, _check_settings, cleaning_verdict,
-                                         is_background_mask, object_candidate)
+from src.data.catalog import read_table
+from src.pipeline.segment_photos import (KEPT, REMOVED, SegmentSettingsChanged, _check_settings, _merge_results,
+                                         cleaning_verdict, is_background_mask, object_candidate)
 from src.preprocess import segment
 
 
@@ -172,6 +173,18 @@ def test_background_measures_tell_object_and_background_apart():
     assert is_background_mask(*segment.background_measures(photo, background, box), rules)
     assert not is_background_mask(white_share, coverage, rules)  # the white cabinet is not flagged
 
+
+def test_results_of_earlier_runs_stay_in_the_table(tmp_path):
+    path = tmp_path / "pix3d_segment_results.csv"
+    _merge_results(path, [{"photo_id": "train_1", "status": "done", "iou": 0.8},
+                          {"photo_id": "train_2", "status": "done", "iou": 0.6}])
+    # A run on the test part, then a run on the train part that skips train_1 and makes train_2 again.
+    _merge_results(path, [{"photo_id": "test_1", "status": "done", "iou": 0.9}])
+    merged = _merge_results(path, [{"photo_id": "train_1", "status": "skipped", "iou": ""},
+                                   {"photo_id": "train_2", "status": "done", "iou": 0.7}])
+    assert [(r["photo_id"], r["status"], str(r["iou"])) for r in merged] == [
+        ("train_1", "done", "0.8"), ("train_2", "done", "0.7"), ("test_1", "done", "0.9")]
+    assert len(read_table(path)) == 3
 
 def test_settings_check_compares_only_the_settings_that_the_prompt_uses(tmp_path):
     record = tmp_path / "pix3d_segment_config.yaml"

@@ -345,17 +345,25 @@ def _check_settings(record: Path, settings: dict, overwrite: bool) -> None:
 
 
 def _merge_results(path: Path, new_rows: list[dict]) -> list[dict]:
-    """Update the results table: a skipped photo keeps its earlier row; other photos get the new row."""
-    old = {}
+    """Update the results table with the rows of this run; return all rows of the table.
+
+    - A photo of this run gets its new row, but a skipped photo keeps its earlier row (the skipped
+      row has no values).
+    - A photo that is not in this run keeps its earlier row. Example: a run on the test part of a
+      split keeps the rows of an earlier run on the train and val parts.
+    """
+    merged: dict[str, dict] = {}
     if path.exists():
         with open(path, newline="") as f:
-            old = {row["photo_id"]: row for row in csv.DictReader(f)}
-    merged = [old.get(row["photo_id"], row) if row["status"] == SKIPPED else row for row in new_rows]
+            merged = {row["photo_id"]: row for row in csv.DictReader(f)}
+    for row in new_rows:
+        if row["status"] != SKIPPED or row["photo_id"] not in merged:
+            merged[row["photo_id"]] = row
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS)
         writer.writeheader()
-        writer.writerows(merged)
-    return merged
+        writer.writerows(merged.values())
+    return list(merged.values())
 
 
 def _summary(rows: list[dict]) -> dict:
@@ -446,7 +454,7 @@ def run(
                          "status": FAILED, "message": f"{type(error).__name__}: {error}"})
 
     this_run = Counter(row["status"] for row in rows)
-    all_rows = _merge_results(results_file(dataset, root), rows)
+    all_rows = _merge_results(results_file(dataset, root), rows)  # totals over every run
     report = {
         "dataset": dataset,
         "mini": mini,

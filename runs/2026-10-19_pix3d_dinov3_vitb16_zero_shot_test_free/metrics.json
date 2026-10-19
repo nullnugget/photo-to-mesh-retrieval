@@ -1,0 +1,152 @@
+{
+  "run_name": "2026-10-19_pix3d_dinov3_vitb16_zero_shot_test_free",
+  "date": "2026-10-19T14:24:30+05:30",
+  "git_commit": "b2349ff349bb4eaed6a66111359aec1a537fbe27",
+  "git_dirty": true,
+  "mode": "zero_shot",
+  "dataset": "pix3d",
+  "photos": "test_free",
+  "split": null,
+  "photo_count": 6474,
+  "backbone": "dinov3_vitb16",
+  "feature_files": {
+    "data/derived/features/dinov3_vitb16/pix3d_renders.npz": "b7a479d83a86aab34cd9ce2726187d609fef270092c73dcd769c49131465991b",
+    "data/derived/features/dinov3_vitb16/pix3d_queries_reference.npz": "e499b952c2821e63cad327b66933dc1f668945c6ceeb355f9ea548b5fdcba439",
+    "data/derived/features/dinov3_vitb16/pix3d_queries_sam.npz": "652609734c6971492140bc83af7642f294a4868d0d03cb76b26973886c890f79"
+  },
+  "lighting": "L2_dark",
+  "rig": "rings25",
+  "mini": false,
+  "results": [
+    {
+      "query_set": "queries_reference",
+      "recipe": "cls",
+      "scoring": "view",
+      "alpha": null,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.7074451652764906,
+      "R@5": 0.9274019153537226,
+      "R@10": 0.9796107506950881,
+      "photos": 6474,
+      "gallery_meshes": 395,
+      "R@1_low": 0.6961692925548347,
+      "R@1_high": 0.7181031819586037,
+      "cat@1": 0.9609206054989188,
+      "R@1_inside_category": 0.7514674080939141,
+      "macro_R@1": 0.7040067082964249,
+      "per_category": {
+        "bed": {
+          "queries": 729,
+          "R@1": 0.7160493827160493
+        },
+        "chair": {
+          "queries": 2667,
+          "R@1": 0.8398950131233596
+        },
+        "desk": {
+          "queries": 502,
+          "R@1": 0.7310756972111554
+        },
+        "misc": {
+          "queries": 45,
+          "R@1": 0.9777777777777777
+        },
+        "sofa": {
+          "queries": 1183,
+          "R@1": 0.44801352493660185
+        },
+        "table": {
+          "queries": 1316,
+          "R@1": 0.6527355623100304
+        },
+        "tool": {
+          "queries": 32,
+          "R@1": 0.5625
+        }
+      },
+      "subsets": {
+        "clean": {
+          "queries": 3742,
+          "R@1": 0.7426509887760556
+        },
+        "truncated": {
+          "queries": 1184,
+          "R@1": 0.6621621621621622
+        },
+        "occluded": {
+          "queries": 1188,
+          "R@1": 0.6666666666666666
+        },
+        "slightly_occluded": {
+          "queries": 1026,
+          "R@1": 0.6364522417153996
+        }
+      }
+    },
+    {
+      "query_set": "queries_sam",
+      "recipe": "cls",
+      "scoring": "view",
+      "alpha": null,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.6175471115230151,
+      "R@5": 0.8869323447636701,
+      "R@10": 0.9476367006487488,
+      "photos": 6474,
+      "gallery_meshes": 395,
+      "R@1_low": 0.6059623107815879,
+      "R@1_high": 0.6291357738646896,
+      "cat@1": 0.9326536916898363,
+      "R@1_inside_category": 0.6658943466172382,
+      "macro_R@1": 0.628863623812797,
+      "per_category": {
+        "bed": {
+          "queries": 729,
+          "R@1": 0.6570644718792867
+        },
+        "chair": {
+          "queries": 2667,
+          "R@1": 0.7041619797525309
+        },
+        "desk": {
+          "queries": 502,
+          "R@1": 0.6653386454183267
+        },
+        "misc": {
+          "queries": 45,
+          "R@1": 0.9777777777777777
+        },
+        "sofa": {
+          "queries": 1183,
+          "R@1": 0.41166525781910396
+        },
+        "table": {
+          "queries": 1316,
+          "R@1": 0.5797872340425532
+        },
+        "tool": {
+          "queries": 32,
+          "R@1": 0.40625
+        }
+      },
+      "subsets": {
+        "clean": {
+          "queries": 3742,
+          "R@1": 0.6659540352752539
+        },
+        "truncated": {
+          "queries": 1184,
+          "R@1": 0.5675675675675675
+        },
+        "occluded": {
+          "queries": 1188,
+          "R@1": 0.5303030303030303
+        },
+        "slightly_occluded": {
+          "queries": 1026,
+          "R@1": 0.5614035087719298
+        }
+      }
+    }
+  ]
+}

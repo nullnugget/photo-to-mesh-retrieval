@@ -52,6 +52,12 @@ def output_dirs(mini: bool) -> dict[str, Path]:
     return {"runs": paths.RUNS_DIR, "checkpoints": paths.CHECKPOINTS_DIR, "registry": paths.REGISTRY_CSV}
 
 
+def _eta(start: float, done: int, total: int) -> str:
+    """Time left for the remaining epochs, from the mean time of the epochs so far, as "12 min" or "40 s"."""
+    left = (time.perf_counter() - start) / done * (total - done)
+    return f"{left / 60:.0f} min" if left >= 90 else f"{left:.0f} s"
+
+
 def _flatten(prefix: str, results: dict[str, dict]) -> dict:
     return {f"{prefix}{name}_{key}": round(value, 4) for name, entry in results.items() for key, value in entry.items()
             if key in ("R@1", "R@5", "cat@1")}
@@ -110,15 +116,15 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
     label = "_".join(datasets)
     run = runs.create_run(cfg, label, backbone, "_".join(p for p in (split, tag) if p), runs_dir=out["runs"], checkpoints_dir=out["checkpoints"])
     print(f"run {run['run_name']}: {len(photos)} training photos, training gallery {len(gallery.mesh_ids)} meshes, "
-          f"{len(loader)} steps per epoch, {epochs} epochs; heads {parameter_counts(heads)['total']:,} parameters")
-    print("zero-shot val R@1: " + ", ".join(f"{v.name} {100 * v.zero_shot_r1:.1f}" for v in val_sets))
+          f"{len(loader)} steps per epoch, {epochs} epochs; heads {parameter_counts(heads)['total']:,} parameters", flush=True)
+    print("zero-shot val R@1: " + ", ".join(f"{v.name} {100 * v.zero_shot_r1:.1f}" for v in val_sets), flush=True)
 
     # 3. Epochs.
     log_rows, best = [], {"value": -1.0}
     start = time.perf_counter()
     for epoch in range(1, epochs + 1):
         train_values = trainer.train_epoch(heads, extractor, loader, optimizer, scheduler, gallery, train_cfg,
-                                           data_cfg["background_rgb"], generator, device)
+                                           data_cfg["background_rgb"], generator, device, desc=f"epoch {epoch}/{epochs}")
         results = trainer.validate(heads, val_sets, galleries, train_cfg["scoring"]["alpha"])
         value = trainer.selection_value(results)
         row = {"epoch": epoch, "lr": round(scheduler.get_last_lr()[0], 7),
@@ -133,7 +139,8 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
         print(f"epoch {epoch:3d}/{epochs}  loss {row['loss']:.4f} (instance {row['instance']:.4f}, category {row['category']:.4f})  "
               f"batch R@1 {100 * row['batch_R@1']:5.1f}  val R@1 " + ", ".join(f"{n} {100 * r['R@1']:.1f}" for n, r in results.items())
               + f"  | {row['images_per_second']} images/s, loader wait {100 * row['loader_wait_share']:.0f} %"
-              + ("  *best" if best["epoch"] == epoch else ""))
+              + f"  | end in about {_eta(start, epoch, epochs)}"
+              + ("  *best" if best["epoch"] == epoch else ""), flush=True)  # flush: show the line at once, also through a pipe
         with open(run["run_dir"] / "train_log.csv", "w", newline="") as f:  # rewritten each epoch, so a stopped run keeps its log
             writer = csv.DictWriter(f, fieldnames=list(log_rows[0]))
             writer.writeheader()
@@ -178,5 +185,5 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
             "checkpoint_path": str(checkpoint.relative_to(paths.ROOT)),
             "notes": f"{set_dataset}; zero-shot val R@1 {100 * result['zero_shot_R@1']:.1f}" + ("; mini" if mini else ""),
         }, registry=out["registry"])
-    print(f"best epoch {best['epoch']} (mean val R@1 {100 * best['value']:.1f}); {record['minutes']} min -> {run['run_dir'].relative_to(paths.ROOT)}")
+    print(f"best epoch {best['epoch']} (mean val R@1 {100 * best['value']:.1f}); {record['minutes']} min -> {run['run_dir'].relative_to(paths.ROOT)}", flush=True)
     return record

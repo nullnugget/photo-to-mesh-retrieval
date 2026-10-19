@@ -31,6 +31,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from src import paths
 from src.data.splits import load_split
@@ -175,13 +176,19 @@ def train_step(heads: EmbeddingHeads, optimizer, scheduler, query_features: torc
 
 
 def train_epoch(heads: EmbeddingHeads, extractor: FeatureExtractor, loader: DataLoader, optimizer, scheduler,
-                gallery: Gallery, train_cfg: dict, background_rgb, generator: torch.Generator, device) -> dict:
-    """One pass over the training photos; return the mean loss values and the speed figures."""
+                gallery: Gallery, train_cfg: dict, background_rgb, generator: torch.Generator, device,
+                desc: str = "train") -> dict:
+    """One pass over the training photos; return the mean loss values and the speed figures.
+
+    A progress bar (on stderr, so it appears at once also through a pipe) shows the steps, the
+    speed, the time left in the epoch, and the running mean loss.
+    """
     sums, steps, images = {}, 0, 0
     wait = compute = 0.0
     needs_masks = extractor.recipe != "cls"
     mark = time.perf_counter()
-    for batch in loader:
+    progress = tqdm(loader, desc=desc, unit="step", leave=False, dynamic_ncols=True)
+    for batch in progress:
         loaded = time.perf_counter()
         wait += loaded - mark  # time spent waiting for the data loader
         images_np = batch["image"].numpy()
@@ -192,6 +199,7 @@ def train_epoch(heads: EmbeddingHeads, extractor: FeatureExtractor, loader: Data
             sums[key] = sums.get(key, 0.0) + value
         steps += 1
         images += len(images_np)
+        progress.set_postfix(loss=f"{sums['loss'] / steps:.3f}")
         mark = time.perf_counter()
         compute += mark - loaded
     means = {key: value / max(steps, 1) for key, value in sums.items()}

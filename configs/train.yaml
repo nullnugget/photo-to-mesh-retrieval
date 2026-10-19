@@ -10,6 +10,7 @@ train:
     embedding_dim: 256               # length of every embedding (query, view, and mesh)
     hidden_dim: 512                  # width of the hidden layer in each projector
     aggregator: attention            # how 25 view embeddings become 1 mesh embedding: attention or mean
+    attention_dim: 128               # attention: width of the rating network (Linear embedding_dim -> 128, tanh, dot with a learned vector)
     view_dropout_min_views: 12       # during training, the aggregator sees a random 12 to 25 views
   loss:
     temperature: 0.1                 # divides the scores before the softmax; smaller = sharper probabilities

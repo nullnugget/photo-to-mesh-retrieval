@@ -23,14 +23,22 @@ def test_parameter_counts():
     counts = parameter_counts(HEADS)
     projector = 768 * 512 + 512 + 512 * 256 + 256  # two linear layers with biases
     assert counts["query_projector"] == counts["view_projector"] == projector == 525_056
-    assert counts["view_aggregator"] == 256 * 256 + 256 + 256  # key layer and rating vector
-    assert counts["total"] == 2 * projector + 66_048
+    assert counts["view_aggregator"] == 256 * 128 + 128 + 128 == 33_024  # rating layer (weights, biases) and rating vector
+    assert counts["total"] == 2 * projector + 33_024 == 1_083_136
     assert parameter_counts(EmbeddingHeads(768, aggregator="mean"))["view_aggregator"] == 0
 
 
 def test_from_config_uses_the_training_settings():
     heads = EmbeddingHeads.from_config(load_config(["train.yaml"])["train"]["heads"], feature_dim=768)
     assert heads.embed_queries(torch.randn(2, 768)).shape == (2, 256)
+
+
+def test_the_rating_is_tanh_attention():
+    aggregator = ViewAggregator(256, "attention")
+    torch.nn.init.normal_(aggregator.rating)
+    views = torch.randn(3, 25, 256)
+    ratings = torch.tanh(aggregator.key(views)) @ aggregator.rating  # (3, 25, 128) @ (128,) -> (3, 25)
+    assert torch.allclose(aggregator.weights(views), torch.softmax(ratings, dim=1), atol=1e-6)
 
 
 def test_the_attention_starts_as_the_plain_mean():

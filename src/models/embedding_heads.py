@@ -14,11 +14,14 @@ heads learn to translate both into one shared space where only the mesh counts.
   scale to length 1) but separate weights: photos and grey renders are like two languages, so each
   gets its own translator.
 - ViewAggregator combines the view embeddings of one mesh into one mesh embedding by attention
-  pooling: a learned vector rates each view, a softmax turns the ratings into weights, and the
+  pooling: a small rating network gives each view one number (Linear 256→128, tanh, dot product
+  with a learned vector of 128), a softmax over the views turns the ratings into weights, and the
   weighted mean of the view embeddings, scaled to length 1, is the mesh embedding. The mean is taken
   of the view embeddings themselves, so the mesh embedding stays in the same space as the view and
-  query embeddings (the combined score adds a view similarity and a mesh similarity). The rating
-  vector starts at zero, so training starts from the plain mean of the views.
+  query embeddings (the combined score adds a view similarity and a mesh similarity). The tanh makes
+  the rating non-linear: without it, a linear layer followed by a dot product is one fixed vector,
+  and the rating could only measure how far a view points in one direction. The learned vector
+  starts at zero, so training starts from the plain mean of the views.
 
 Scores (the same definitions as the zero-shot search in `src/retrieval/search.py`, but in PyTorch,
 so that the gradients reach the heads):
@@ -31,7 +34,6 @@ View dropout: during training, the aggregator sees a random 12 to 25 views of ea
 (`random_view_mask`), so that it does not depend on any single view.
 """
 
-import math
 
 import torch
 import torch.nn as nn
@@ -63,21 +65,29 @@ class ViewProjector(Projector):
 class ViewAggregator(nn.Module):
     """Combines the view embeddings of each mesh into one mesh embedding.
 
-    "attention": rating of view v = (K e_v) · w / sqrt(dim), with a learned key layer K and a learned
-    vector w; weights = softmax of the ratings over the views that the mask keeps; mesh embedding =
-    the weighted mean of the view embeddings, scaled to length 1. w starts at zero, so all views start
-    with equal weight. "mean": equal weights, no parameters.
+    "attention" (attention pooling, as in attention-based multiple-instance learning):
+        rating of view v  = w · tanh(K e_v + b)        K: dim → attention_dim, w: attention_dim
+        weights           = softmax of the ratings over the views that the mask keeps
+        mesh embedding    = the weighted mean of the view embeddings e_v, scaled to length 1
+    Each of the attention_dim rows of K detects one pattern in a view; tanh limits every answer to
+    −1 … +1, and w combines the answers into the rating. w starts at zero, so all views start with
+    equal weight (the plain mean). The same K, b, and w rate every view of every mesh.
+
+    "mean": equal weights, no parameters.
+
+    Shapes (M meshes, V views, D = dim, H = attention_dim):
+        views (M, V, D) → K e + b (M, V, H) → tanh (M, V, H) → · w (M, V) ratings
+        → softmax (M, V) weights → weighted sum of the views (M, D) → unit length (M, D)
     """
 
-    def __init__(self, dim: int, kind: str = "attention"):
+    def __init__(self, dim: int, kind: str = "attention", attention_dim: int = 128):
         super().__init__()
         if kind not in AGGREGATORS:
             raise ValueError(f"kind must be one of {AGGREGATORS}, got {kind!r}")
         self.kind = kind
         if kind == "attention":
-            self.key = nn.Linear(dim, dim)
-            self.rating = nn.Parameter(torch.zeros(dim))  # zero: the training starts from the plain mean
-            self.scale = 1.0 / math.sqrt(dim)
+            self.key = nn.Linear(dim, attention_dim)
+            self.rating = nn.Parameter(torch.zeros(attention_dim))  # zero: the training starts from the plain mean
 
     def weights(self, views: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
         """Return the weight of every view: (meshes, views), each row adds up to 1.
@@ -87,7 +97,7 @@ class ViewAggregator(nn.Module):
             mask: bool (meshes, views), True = the view takes part; None = all views.
         """
         if self.kind == "attention":
-            ratings = (self.key(views) @ self.rating) * self.scale  # (meshes, views)
+            ratings = torch.tanh(self.key(views)) @ self.rating  # (meshes, views, H) @ (H,) -> (meshes, views)
         else:
             ratings = torch.zeros(views.shape[:2], device=views.device)
         if mask is not None:
@@ -103,16 +113,17 @@ class ViewAggregator(nn.Module):
 class EmbeddingHeads(nn.Module):
     """The three heads together. They only work as a set, so they are trained and saved together."""
 
-    def __init__(self, feature_dim: int, hidden_dim: int = 512, embedding_dim: int = 256, aggregator: str = "attention"):
+    def __init__(self, feature_dim: int, hidden_dim: int = 512, embedding_dim: int = 256, aggregator: str = "attention",
+                 attention_dim: int = 128):
         super().__init__()
         self.query_projector = QueryProjector(feature_dim, hidden_dim, embedding_dim)
         self.view_projector = ViewProjector(feature_dim, hidden_dim, embedding_dim)
-        self.view_aggregator = ViewAggregator(embedding_dim, aggregator)
+        self.view_aggregator = ViewAggregator(embedding_dim, aggregator, attention_dim)
 
     @classmethod
     def from_config(cls, heads_cfg: dict, feature_dim: int) -> "EmbeddingHeads":
         """Build the heads from `train.heads` and the feature length of the backbone."""
-        return cls(feature_dim, heads_cfg["hidden_dim"], heads_cfg["embedding_dim"], heads_cfg["aggregator"])
+        return cls(feature_dim, heads_cfg["hidden_dim"], heads_cfg["embedding_dim"], heads_cfg["aggregator"], heads_cfg["attention_dim"])
 
     def embed_queries(self, query_features: torch.Tensor) -> torch.Tensor:
         """(queries, feature_dim) -> query embeddings (queries, embedding_dim)."""

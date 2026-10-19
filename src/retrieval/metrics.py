@@ -8,6 +8,10 @@ its position in that list (1 = first).
 - Cat@1 (category accuracy at 1): the share of queries whose first result has the right category
   (for example any chair for a chair photo). It shows whether the errors are near misses
   (a similar chair) or gross errors (a table for a chair).
+- R@1 inside the category: the R@1 when each query is compared only with the meshes of its own
+  category. The difference to R@1 is the share of errors that pick a mesh of a wrong category.
+- Per-category R@1 and macro R@1: the R@1 of each category, and their plain mean. A large category
+  (Pix3D: chairs) dominates R@1; macro R@1 gives every category the same weight.
 
 Confidence interval (bootstrap): the queries are a sample, so a metric has random error. The
 bootstrap draws the same number of queries again at random, with replacement, many times, and
@@ -40,6 +44,33 @@ def recall_at_k(ranks: np.ndarray, k: int) -> float:
 def category_hits(scores: np.ndarray, query_categories: np.ndarray, mesh_categories: np.ndarray) -> np.ndarray:
     """Return True for every query whose first result has the query's category: bool (Q,)."""
     return mesh_categories[scores.argmax(axis=1)] == query_categories
+
+
+def ranks_inside_category(scores: np.ndarray, correct: np.ndarray, query_categories: np.ndarray, mesh_categories: np.ndarray) -> np.ndarray:
+    """Return the rank of the correct mesh among the meshes of the query's own category: int (Q,).
+
+    The meshes of other categories get the score minus infinity, so they rank after every mesh of
+    the right category and cannot take the correct mesh's place.
+    """
+    same_category = mesh_categories[None, :] == query_categories[:, None]  # (Q, M)
+    return correct_ranks(np.where(same_category, scores, -np.inf), correct)
+
+
+def recall_by_group(ranks: np.ndarray, groups: np.ndarray, k: int = 1) -> dict[str, dict]:
+    """Return R@k and the number of queries for each group (for example each category).
+
+    Returns:
+        {group: {"queries": n, "R@k": share}}, sorted by group name.
+    """
+    return {
+        str(group): {"queries": int((groups == group).sum()), f"R@{k}": recall_at_k(ranks[groups == group], k)}
+        for group in sorted(set(groups.tolist()))
+    }
+
+
+def macro_recall(ranks: np.ndarray, groups: np.ndarray, k: int = 1) -> float:
+    """Return the mean of the per-group R@k values: every group counts the same."""
+    return float(np.mean([entry[f"R@{k}"] for entry in recall_by_group(ranks, groups, k).values()]))
 
 
 def bootstrap_interval(hits: np.ndarray, samples: int = 2000, seed: int = 0, level: float = 0.95) -> tuple[float, float]:

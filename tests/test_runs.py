@@ -27,13 +27,24 @@ def test_create_run_makes_both_folders_and_saves_the_config(scratch_run_dirs):
 
 def test_registry_header_once_and_unknown_columns_rejected(tmp_path):
     registry = tmp_path / "registry.csv"
-    runs.append_registry({"run_name": "a", "test_R@1": 1.0}, registry=registry)
+    runs.append_registry({"run_name": "a", "R@1": 1.0}, registry=registry)
     runs.append_registry({"run_name": "b"}, registry=registry)
     rows = runs.read_registry(registry)
     assert [r["run_name"] for r in rows] == ["a", "b"]
     assert list(rows[0]) == runs.REGISTRY_COLUMNS
     with pytest.raises(KeyError):
         runs.append_registry({"run_name": "c", "not_a_column": 1}, registry=registry)
+
+
+def test_a_registry_with_the_old_header_is_upgraded_without_losing_values(tmp_path):
+    registry = tmp_path / "registry.csv"
+    registry.write_text("run_name,date,split,test_R@1,test_cat_acc@1,notes\nv1_baseline,2026-10-13,v1 split,25.03,77.35,old row\n")
+    runs.append_registry({"run_name": "new", "mode": "zero_shot", "photos": "test_free", "R@1": 0.5}, registry=registry)
+    rows = runs.read_registry(registry)
+    assert list(rows[0]) == runs.REGISTRY_COLUMNS
+    assert {k: rows[0][k] for k in ("run_name", "split", "R@1", "cat@1", "photos", "mode", "notes")} == {
+        "run_name": "v1_baseline", "split": "v1 split", "R@1": "25.03", "cat@1": "77.35", "photos": "test", "mode": "trained", "notes": "old row"}
+    assert rows[1]["photos"] == "test_free" and rows[1]["R@1"] == "0.5"
 
 
 def _checkpoint(tmp_path):

@@ -43,29 +43,43 @@ from src import paths
 from src.config import save_config
 
 # Columns of runs/registry.csv, in order. A row may leave any column empty.
+# One row is one result: one model (zero-shot backbone features, or trained heads), evaluated on one
+# group of photos with one query set, one feature recipe, and one scoring. An evaluation of several
+# settings writes several rows with the same run name.
 REGISTRY_COLUMNS = [
     "run_name",
     "date",
     "git_commit",
     "git_dirty",
-    "split",
+    "mode",  # "zero_shot" (raw backbone features) or "trained" (embedding heads)
     "datasets",
+    "split",  # the split of the photos and of the training; empty for the test-free photos
+    "photos",  # the photo group: "test_free", "train", "val", or "test"
+    "photo_count",
+    "query_set",  # "queries_reference" (the dataset's own masks) or "queries_sam" (SAM masks)
     "backbone",
+    "recipe",  # feature recipe: "cls", "masked_mean", or "cls_masked_mean"
+    "scoring",  # "view", "mesh", or "combined"
+    "alpha",  # weight of the view score in the combined score
     "render_config",
     "lighting",
     "temperature",
     "category_weight",
-    "alpha",
     "epochs",
     "best_epoch",
-    "val_R@1",
-    "test_R@1",
-    "test_R@5",
-    "test_R@10",
-    "test_cat_acc@1",
+    "val_R@1",  # trained runs: validation R@1 of the selected checkpoint
+    "R@1",
+    "R@5",
+    "R@10",
+    "cat@1",  # share of photos whose first result has the right category
+    "macro_R@1",  # mean of the per-category R@1 values
     "checkpoint_path",
     "notes",
 ]
+
+# Columns of earlier registry versions and their new names. A registry with an older header is
+# rewritten with the current header before a row is added (see `append_registry`).
+RENAMED_REGISTRY_COLUMNS = {"test_R@1": "R@1", "test_R@5": "R@5", "test_R@10": "R@10", "test_cat_acc@1": "cat@1"}
 
 # Names of the three embedding heads inside a checkpoint file.
 HEAD_KEYS = ("query_projector", "view_projector", "view_aggregator")
@@ -182,18 +196,50 @@ def create_run(
 # --------------------------------------------------------------------------------------------
 
 
+def _upgrade_registry(registry: Path) -> None:
+    """Rewrite a registry whose header is not REGISTRY_COLUMNS, keeping every value.
+
+    Renamed columns (RENAMED_REGISTRY_COLUMNS) move to their new names. A row of the first version
+    held only test results, so it gets photos = "test" and mode = "trained". A column that no longer
+    exists is an error, so that no value is lost silently.
+    """
+    with open(registry, newline="") as f:
+        rows = list(csv.DictReader(f))
+    upgraded = []
+    for row in rows:
+        old_test_row = "test_R@1" in row
+        row = {RENAMED_REGISTRY_COLUMNS.get(column, column): value for column, value in row.items()}
+        unknown = set(row) - set(REGISTRY_COLUMNS)
+        if unknown:
+            raise KeyError(f"{registry}: columns {sorted(unknown)} are not in REGISTRY_COLUMNS")
+        if old_test_row and row.get("R@1"):
+            row.setdefault("photos", "test")
+            row.setdefault("mode", "trained")
+        upgraded.append({column: row.get(column, "") for column in REGISTRY_COLUMNS})
+    with open(registry, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=REGISTRY_COLUMNS)
+        writer.writeheader()
+        writer.writerows(upgraded)
+
+
 def append_registry(row: dict[str, Any], registry: Path = paths.REGISTRY_CSV) -> Path:
     """Add one row to the results registry (a CSV file).
 
-    The header is written only when the file is new. Columns that the row does
-    not give stay empty. A key that is not in REGISTRY_COLUMNS is an error, so
-    that a typing error cannot create a silent new column.
+    The header is written only when the file is new. A file with an older header is first rewritten
+    with the current header (`_upgrade_registry`). Columns that the row does not give stay empty.
+    A key that is not in REGISTRY_COLUMNS is an error, so that a typing error cannot create a
+    silent new column.
     """
     unknown = set(row) - set(REGISTRY_COLUMNS)
     if unknown:
         raise KeyError(f"unknown registry columns: {sorted(unknown)}")
     registry.parent.mkdir(parents=True, exist_ok=True)
     is_new = not registry.exists() or registry.stat().st_size == 0
+    if not is_new:
+        with open(registry, newline="") as f:
+            header = next(csv.reader(f))
+        if header != REGISTRY_COLUMNS:
+            _upgrade_registry(registry)
     with open(registry, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=REGISTRY_COLUMNS)
         if is_new:

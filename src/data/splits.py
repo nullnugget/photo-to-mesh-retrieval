@@ -32,6 +32,16 @@ after the training, and no photo of it was used for the training. The splits cop
 - During evaluation, the gallery contains every mesh. Thus a test photo must find its mesh among
   all meshes, also the meshes that the model has never seen.
 
+Shared settings and the test-free photos. The three splits are three independent experiments: each
+trains its own model, so a photo can be a training photo in one split and a test photo in another.
+But some settings serve all three experiments at once, because the project has only one set of each:
+the lighting of the renders, the backbone, the feature recipe, the segmenter, and the zero-shot
+scoring. A selection also fits the photos that it is made on a little: among many settings, the
+best one on some photos is partly lucky on exactly these photos. So a shared setting must not be
+selected on a photo that is a test photo of any split. The "test-free photos" of a dataset are the
+photos that are in no test part of any of its splits (`test_free_query_ids`). Shared settings are
+selected only on them; each test part is evaluated once, after all selections are fixed.
+
 Every split is repeatable: it depends only on the input rows and a seed. Split files are small
 JSON files in `data/splits/<dataset>/` and are tracked in git, so that every run uses the same
 split. A split works for any dataset: it needs only the query id, the category, and the mesh id
@@ -42,6 +52,10 @@ import json
 import random
 from collections import defaultdict
 from pathlib import Path
+
+from src import paths
+
+PARTS = ("train", "val", "test")
 
 
 def _group_by(items: list[dict], key: str) -> dict[str, list[dict]]:
@@ -206,3 +220,34 @@ def load_split(path: Path) -> dict:
     """Read a split file."""
     with open(path) as f:
         return json.load(f)
+
+
+def test_free_query_ids(dataset: str, splits_dir: Path = paths.SPLITS_DIR) -> list[str]:
+    """Return the test-free photos of a dataset: the query ids that are in no test part of any split.
+
+    Why: the lighting, the backbone, the feature recipe, the segmenter, and the zero-shot scoring are
+    shared by all splits. A selection fits its photos a little, so these settings are selected only
+    on photos that no split uses as test photos (see the module description). The photos are in the
+    train or val part of every split; they are not a split of their own. Because a zero-shot model
+    learns nothing, its training photos are as new to it as its validation photos.
+
+    Args:
+        dataset: For example "pix3d"; the split files are read from `<splits_dir>/<dataset>/`.
+        splits_dir: The folder of the split files.
+
+    Returns:
+        The sorted query ids.
+
+    Raises:
+        FileNotFoundError: If a split file of the dataset is missing (the result would include its test photos).
+        ValueError: If the splits do not cover the same photos.
+    """
+    all_photos, test_photos = None, set()
+    for name in paths.SPLIT_NAMES:
+        split_parts = load_split(paths.split_file(dataset, name, splits_dir))["parts"]
+        photos = {query_id for part in PARTS for query_id in split_parts[part]}
+        if all_photos is not None and photos != all_photos:
+            raise ValueError(f"the splits of {dataset!r} do not cover the same photos ({name!r} differs)")
+        all_photos = photos
+        test_photos |= set(split_parts["test"])
+    return sorted(all_photos - test_photos)

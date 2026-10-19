@@ -1,4 +1,4 @@
-"""Tests for src/preprocess/segment.py and the cleaning rules of src/pipeline/segment_photos.py.
+"""Tests for src/preprocess/segment.py, and the cleaning rules and settings check of src/pipeline/segment_photos.py.
 
 The model tests run on the CPU (a few seconds each), so they do not need the GPU. They use SAM 2.1
 small, which behaves like the active SAM 2.1 large at a quarter of the time.
@@ -8,8 +8,9 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from src.config import load_config
-from src.pipeline.segment_photos import KEPT, REMOVED, cleaning_verdict, is_background_mask, object_candidate
+from src.config import load_config, save_config
+from src.pipeline.segment_photos import (KEPT, REMOVED, SegmentSettingsChanged, _check_settings, cleaning_verdict,
+                                         is_background_mask, object_candidate)
 from src.preprocess import segment
 
 
@@ -170,6 +171,31 @@ def test_background_measures_tell_object_and_background_apart():
     rules = {"white_share_above": 0.8, "coverage_below": 0.5}
     assert is_background_mask(*segment.background_measures(photo, background, box), rules)
     assert not is_background_mask(white_share, coverage, rules)  # the white cabinet is not flagged
+
+
+def test_settings_check_compares_only_the_settings_that_the_prompt_uses(tmp_path):
+    record = tmp_path / "pix3d_segment_config.yaml"
+    segment_cfg = {"segmenter": {"precision": "fp16"}, "check": {"edge_band_fraction": 0.005},
+                   "detector": {"box_threshold": 0.35}, "prompts": {}, "cleaning": {"min_mask_area": 0.05}}
+    save_config({"prompt": "reference_box", "segment": segment_cfg}, record)
+
+    # The reference box does not use the cleaning rules: a change there does not stop the run.
+    new_rules = {**segment_cfg, "cleaning": {"min_mask_area": 0.01}}
+    _check_settings(record, {"prompt": "reference_box", "segment": new_rules}, overwrite=False)
+
+    # A change of SAM stops the run, and a different prompt too.
+    new_sam = {**segment_cfg, "segmenter": {"precision": "fp32"}}
+    with pytest.raises(SegmentSettingsChanged, match="segmenter"):
+        _check_settings(record, {"prompt": "reference_box", "segment": new_sam}, overwrite=False)
+    with pytest.raises(SegmentSettingsChanged, match="prompt"):
+        _check_settings(record, {"prompt": "detector", "segment": new_rules}, overwrite=False)
+
+    # The detector uses the cleaning rules: a change there stops the run, unless overwrite.
+    save_config({"prompt": "detector", "segment": segment_cfg}, record)
+    with pytest.raises(SegmentSettingsChanged, match="cleaning"):
+        _check_settings(record, {"prompt": "detector", "segment": new_rules}, overwrite=False)
+    _check_settings(record, {"prompt": "detector", "segment": new_rules}, overwrite=True)
+    _check_settings(record, {"prompt": "detector", "segment": new_rules}, overwrite=False)  # the saved record
 
 
 def test_object_candidate_picks_the_object_or_none():

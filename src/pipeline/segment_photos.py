@@ -26,7 +26,9 @@ are kept for the final result). ABO: all photos of the download manifest.
 Safe to stop and start again: masks that exist are skipped (and keep their earlier results row).
 A photo without a detection has no mask file, so a new run asks the detector again (it is quick).
 The settings are saved in `<dataset>_segment_config.yaml`; a run with other settings stops with an
-error instead of mixing masks, unless `overwrite=True` (then every mask is made again).
+error instead of mixing masks, unless `overwrite=True` (then every mask is made again). Only the
+settings that the prompt uses are compared (see `SETTINGS_USED`): for example, a change of the ABO
+cleaning rules does not stop a Pix3D run with the reference box, because that run does not use them.
 
 Outputs (normal run):
     data/derived/masks/<dataset>/<category>/<name>.png      the masks
@@ -58,6 +60,18 @@ from src.pipeline import catalog_abo_meshes, download_abo
 from src.preprocess import segment
 
 PROMPTS = ("reference_box", "detector")
+# The parts of the segment settings that change the masks or the results rows of each prompt. The
+# settings check compares only these parts, so that a change of a part that the prompt does not use
+# does not stop the run (see `_check_settings`).
+# - Both prompts use SAM (`segmenter`) and the IoU check (`check`; with the detector, it is not used,
+#   but it costs nothing to compare it).
+# - Only the detector prompt uses Grounding DINO (`detector`), its text prompts (`prompts`), and the
+#   cleaning rules (`cleaning`, which also hold the background-mask repair that can change a mask).
+# - `segmenter_small` is not used by the step (only by tests and comparisons).
+SETTINGS_USED = {
+    "reference_box": ("segmenter", "check"),
+    "detector": ("segmenter", "check", "detector", "prompts", "cleaning"),
+}
 MINI_PHOTOS_PER_CATEGORY = 3
 MINI_SEED = 0  # seed of the random photos of a mini run
 DONE, SKIPPED, FAILED = "done", "skipped", "failed"
@@ -301,13 +315,31 @@ def segment_photo(item: PhotoItem, target: Path, segmenter, detector, segment_cf
 # ---------------------------------------------------------------------------------------------
 
 
+def _settings_used(settings: dict, prompt: str) -> dict:
+    """The parts of `settings` ({"prompt": ..., "segment": {...}}) that the prompt uses (see SETTINGS_USED).
+
+    A part that is missing from `settings` gives None, so that an added or removed part also counts
+    as a change.
+    """
+    segment_cfg = settings.get("segment") or {}
+    return {"prompt": settings.get("prompt"), **{part: segment_cfg.get(part) for part in SETTINGS_USED[prompt]}}
+
+
 def _check_settings(record: Path, settings: dict, overwrite: bool) -> None:
-    """Stop if earlier masks were made with other settings; save the current settings."""
-    if record.exists() and not overwrite and load_yaml(record) != settings:
-        raise SegmentSettingsChanged(
-            f"{record} differs from the current settings. Run again with overwrite (all masks are made "
-            "again), or restore the settings."
-        )
+    """Stop if earlier masks were made with other settings; save the current settings.
+
+    Only the parts that the current prompt uses are compared (see SETTINGS_USED). A different prompt
+    is always a change. The whole current settings are then saved, as the record of the latest run.
+    """
+    prompt = settings["prompt"]
+    if record.exists() and not overwrite:
+        changed = [part for part, value in _settings_used(settings, prompt).items()
+                   if _settings_used(load_yaml(record), prompt)[part] != value]
+        if changed:
+            raise SegmentSettingsChanged(
+                f"{record} differs from the current settings in: {', '.join(changed)}. Run again with "
+                "overwrite (all masks are made again), or restore the settings."
+            )
     record.parent.mkdir(parents=True, exist_ok=True)
     save_config(settings, record)
 

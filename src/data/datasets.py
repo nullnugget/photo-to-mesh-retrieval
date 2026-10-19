@@ -21,6 +21,7 @@ that PyTorch gives it (a new one in every epoch). So a run with the same seed re
 two workers never repeat each other's changes.
 """
 
+import os
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -96,12 +97,19 @@ def training_photos(datasets: list[str], split: str, part: str, query_images_cfg
 
 
 def loader_worker_init(_worker_id: int) -> None:
-    """Give each data loader worker one CPU thread for PyTorch.
+    """Prepare a data loader worker process: all CPU cores, and one PyTorch thread.
 
-    The image changes use small PyTorch operations. By default, each worker process would start as
-    many threads as the CPU has cores, and 4 workers with 8 threads each slow each other down
-    (measured: 113 against 306 images per second). One thread per worker avoids this.
+    1. All CPU cores. A worker is a copy (fork) of the main process, and it inherits the core
+       binding of the main thread. The OpenMP runtime of the CPU math libraries can bind the main
+       thread to one core (2 logical CPUs) when it starts; then all workers share these 2 CPUs.
+       Measured: 111 images per second with 4 workers on 2 CPUs, 273 on all 16. Whether the binding
+       exists depends on what the main process did before (the order of the imports, a notebook),
+       so the worker always sets all cores again.
+    2. One PyTorch thread. The image changes use small PyTorch operations; with the default (one
+       thread per core in each worker) the workers slow each other down.
     """
+    if hasattr(os, "sched_setaffinity"):  # Linux; other systems do not bind this way
+        os.sched_setaffinity(0, range(os.cpu_count()))
     torch.set_num_threads(1)
 
 

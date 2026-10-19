@@ -274,7 +274,7 @@ def checkpoint_metadata(
     run_name: str,
     cfg: dict,
     backbone: str,
-    feature_file: Path,
+    feature_file: Path | list[Path],
     embedding_dim: int,
     epoch: int,
     val_r1: float,
@@ -285,23 +285,29 @@ def checkpoint_metadata(
         run_name: Name of the run that made the checkpoint.
         cfg: Full configuration of the run.
         backbone: Name of the frozen backbone, for example "dinov3_vitb16".
-        feature_file: Feature store file that the heads were trained on.
+        feature_file: Feature store file(s) that the heads were trained on (one renders file for
+            each dataset of the training).
         embedding_dim: Length of the embeddings that the heads produce.
         epoch: Epoch of this checkpoint.
         val_r1: Validation recall@1 at this epoch.
+
+    With several files, "feature_file_sha256" is the SHA-256 of their SHA-256 values in name order,
+    so that one value still identifies the whole set; "feature_files" lists each file.
     """
     commit, dirty = git_state()
-    feature_file = Path(feature_file)
-    # Store the feature file path relative to the repository root when possible, so it is valid on other machines.
-    shown_path = feature_file.relative_to(paths.ROOT) if feature_file.is_relative_to(paths.ROOT) else feature_file
+    files = [Path(f) for f in (feature_file if isinstance(feature_file, list) else [feature_file])]
+    # Store the feature file paths relative to the repository root when possible, so they are valid on other machines.
+    shown = {str(f.relative_to(paths.ROOT) if f.is_relative_to(paths.ROOT) else f): file_sha256(f) for f in files}
+    combined = next(iter(shown.values())) if len(shown) == 1 else hashlib.sha256("".join(shown[k] for k in sorted(shown)).encode()).hexdigest()
     return {
         "run_name": run_name,
         "config": cfg,
         "git_commit": commit,
         "git_dirty": dirty,
         "backbone": backbone,
-        "feature_file": str(shown_path),
-        "feature_file_sha256": file_sha256(feature_file),
+        "feature_file": ", ".join(shown),
+        "feature_file_sha256": combined,
+        "feature_files": shown,
         "embedding_dim": int(embedding_dim),
         "epoch": int(epoch),
         "val_r1": float(val_r1),
@@ -360,4 +366,4 @@ if __name__ == "__main__":
     rows = read_registry()
     print(f"registry: {paths.REGISTRY_CSV.relative_to(paths.ROOT)}, {len(rows)} row(s)")
     for row in rows:
-        print("  ", row["run_name"], "| test R@1:", row["test_R@1"])
+        print("  ", row["run_name"], "|", row["photos"], "R@1:", row["R@1"])

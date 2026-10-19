@@ -32,8 +32,8 @@ def _(mo):
     2. a sheet: for a few random photos, the reference and SAM images, then several changed versions;
        the sheet is also saved to `test_outputs/training_inputs_check/`.
 
-    The speed of the data loader is not measured here: inside a marimo notebook the worker processes
-    run about 2.5 times slower than in a plain script. The training step logs the real speed.
+    The speed of the data loader is not measured here: the training step logs it in every epoch
+    (images per second and the share of the time that the GPU waits for the data loader).
 
     **How to run:** from the repository root, `marimo edit notebooks/08_training_inputs_check.py`, or
     `python notebooks/08_training_inputs_check.py -- --dataset abo` (as a script; without `--dataset`

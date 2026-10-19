@@ -1,0 +1,57 @@
+{
+  "run_name": "2026-10-19_abo_dinov3_vitb16_zero_shot_test_unseen_categories",
+  "date": "2026-10-19T17:50:09+05:30",
+  "git_commit": "69a4ad013e1cf17263dcb0bf89880b16f022749a",
+  "git_dirty": true,
+  "mode": "zero_shot",
+  "dataset": "abo",
+  "photos": "test",
+  "split": "unseen_categories",
+  "photo_count": 3022,
+  "backbone": "dinov3_vitb16",
+  "feature_files": {
+    "data/derived/features/dinov3_vitb16/abo_renders.npz": "4502b7ece4a1ec67a659b088fd6f1670c17c2432023f6b5271d1556ec7b8d934",
+    "data/derived/features/dinov3_vitb16/abo_queries_sam.npz": "60b43cdac8e257ec7c8b64cc9090d1814216d9730f682e20058a40738216e060"
+  },
+  "lighting": "L2_dark",
+  "rig": "rings25",
+  "mini": false,
+  "results": [
+    {
+      "query_set": "queries_sam",
+      "recipe": "cls",
+      "scoring": "combined",
+      "alpha": 0.75,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.3702845797485109,
+      "R@5": 0.6525479814692257,
+      "R@10": 0.7220383851753805,
+      "photos": 3022,
+      "gallery_meshes": 4393,
+      "R@1_low": 0.35340833884844475,
+      "R@1_high": 0.3868299139642621,
+      "cat@1": 0.8636664460622104,
+      "R@1_inside_category": 0.39046988749172734,
+      "macro_R@1": 0.39238346155989545,
+      "per_category": {
+        "ceiling_light": {
+          "queries": 877,
+          "R@1": 0.46864310148232613
+        },
+        "lamp": {
+          "queries": 1559,
+          "R@1": 0.3495830660679923
+        },
+        "planter": {
+          "queries": 447,
+          "R@1": 0.19015659955257272
+        },
+        "vase": {
+          "queries": 139,
+          "R@1": 0.5611510791366906
+        }
+      },
+      "subsets": {}
+    }
+  ]
+}

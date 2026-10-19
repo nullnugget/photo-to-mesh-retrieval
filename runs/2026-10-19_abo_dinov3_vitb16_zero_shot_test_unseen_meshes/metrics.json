@@ -1,0 +1,149 @@
+{
+  "run_name": "2026-10-19_abo_dinov3_vitb16_zero_shot_test_unseen_meshes",
+  "date": "2026-10-19T17:50:02+05:30",
+  "git_commit": "69a4ad013e1cf17263dcb0bf89880b16f022749a",
+  "git_dirty": true,
+  "mode": "zero_shot",
+  "dataset": "abo",
+  "photos": "test",
+  "split": "unseen_meshes",
+  "photo_count": 4139,
+  "backbone": "dinov3_vitb16",
+  "feature_files": {
+    "data/derived/features/dinov3_vitb16/abo_renders.npz": "4502b7ece4a1ec67a659b088fd6f1670c17c2432023f6b5271d1556ec7b8d934",
+    "data/derived/features/dinov3_vitb16/abo_queries_sam.npz": "60b43cdac8e257ec7c8b64cc9090d1814216d9730f682e20058a40738216e060"
+  },
+  "lighting": "L2_dark",
+  "rig": "rings25",
+  "mini": false,
+  "results": [
+    {
+      "query_set": "queries_sam",
+      "recipe": "cls",
+      "scoring": "combined",
+      "alpha": 0.75,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.3249577192558589,
+      "R@5": 0.6545059193041798,
+      "R@10": 0.7492147861802367,
+      "photos": 4139,
+      "gallery_meshes": 4393,
+      "R@1_low": 0.3102198598695337,
+      "R@1_high": 0.33921237013771444,
+      "cat@1": 0.869050495288717,
+      "R@1_inside_category": 0.35515825078521385,
+      "macro_R@1": 0.41526474352491555,
+      "per_category": {
+        "air_conditioner": {
+          "queries": 1,
+          "R@1": 0.0
+        },
+        "basket_bin": {
+          "queries": 6,
+          "R@1": 0.5
+        },
+        "bean_bag": {
+          "queries": 6,
+          "R@1": 0.3333333333333333
+        },
+        "bed": {
+          "queries": 89,
+          "R@1": 0.19101123595505617
+        },
+        "bench": {
+          "queries": 25,
+          "R@1": 0.64
+        },
+        "cabinet": {
+          "queries": 132,
+          "R@1": 0.4015151515151515
+        },
+        "cart": {
+          "queries": 17,
+          "R@1": 0.8823529411764706
+        },
+        "ceiling_light": {
+          "queries": 183,
+          "R@1": 0.41530054644808745
+        },
+        "chair": {
+          "queries": 1085,
+          "R@1": 0.3382488479262673
+        },
+        "clock": {
+          "queries": 8,
+          "R@1": 0.875
+        },
+        "clothes_rack": {
+          "queries": 24,
+          "R@1": 0.25
+        },
+        "desk": {
+          "queries": 144,
+          "R@1": 0.24305555555555555
+        },
+        "dresser": {
+          "queries": 62,
+          "R@1": 0.22580645161290322
+        },
+        "dumbbell": {
+          "queries": 9,
+          "R@1": 0.5555555555555556
+        },
+        "fan": {
+          "queries": 19,
+          "R@1": 0.3684210526315789
+        },
+        "ladder": {
+          "queries": 7,
+          "R@1": 0.7142857142857143
+        },
+        "lamp": {
+          "queries": 369,
+          "R@1": 0.3956639566395664
+        },
+        "ottoman": {
+          "queries": 221,
+          "R@1": 0.12669683257918551
+        },
+        "planter": {
+          "queries": 89,
+          "R@1": 0.2247191011235955
+        },
+        "shelf": {
+          "queries": 89,
+          "R@1": 0.5617977528089888
+        },
+        "sofa": {
+          "queries": 701,
+          "R@1": 0.1783166904422254
+        },
+        "space_heater": {
+          "queries": 10,
+          "R@1": 0.8
+        },
+        "stool": {
+          "queries": 279,
+          "R@1": 0.2867383512544803
+        },
+        "storage_box": {
+          "queries": 6,
+          "R@1": 0.0
+        },
+        "table": {
+          "queries": 490,
+          "R@1": 0.44285714285714284
+        },
+        "tv_stand": {
+          "queries": 33,
+          "R@1": 0.5757575757575758
+        },
+        "vase": {
+          "queries": 35,
+          "R@1": 0.6857142857142857
+        }
+      },
+      "subsets": {}
+    }
+  ]
+}

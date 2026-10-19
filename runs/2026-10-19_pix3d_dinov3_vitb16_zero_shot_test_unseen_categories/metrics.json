@@ -1,0 +1,112 @@
+{
+  "run_name": "2026-10-19_pix3d_dinov3_vitb16_zero_shot_test_unseen_categories",
+  "date": "2026-10-19T17:49:49+05:30",
+  "git_commit": "69a4ad013e1cf17263dcb0bf89880b16f022749a",
+  "git_dirty": true,
+  "mode": "zero_shot",
+  "dataset": "pix3d",
+  "photos": "test",
+  "split": "unseen_categories",
+  "photo_count": 604,
+  "backbone": "dinov3_vitb16",
+  "feature_files": {
+    "data/derived/features/dinov3_vitb16/pix3d_renders.npz": "b7a479d83a86aab34cd9ce2726187d609fef270092c73dcd769c49131465991b",
+    "data/derived/features/dinov3_vitb16/pix3d_queries_reference.npz": "e499b952c2821e63cad327b66933dc1f668945c6ceeb355f9ea548b5fdcba439",
+    "data/derived/features/dinov3_vitb16/pix3d_queries_sam.npz": "652609734c6971492140bc83af7642f294a4868d0d03cb76b26973886c890f79"
+  },
+  "lighting": "L2_dark",
+  "rig": "rings25",
+  "mini": false,
+  "results": [
+    {
+      "query_set": "queries_reference",
+      "recipe": "cls",
+      "scoring": "combined",
+      "alpha": 0.75,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.5248344370860927,
+      "R@5": 0.9238410596026491,
+      "R@10": 0.9652317880794702,
+      "photos": 604,
+      "gallery_meshes": 395,
+      "R@1_low": 0.48509933774834435,
+      "R@1_high": 0.5645695364238411,
+      "cat@1": 0.9503311258278145,
+      "R@1_inside_category": 0.5364238410596026,
+      "macro_R@1": 0.5096781915803154,
+      "per_category": {
+        "bookcase": {
+          "queries": 361,
+          "R@1": 0.5872576177285319
+        },
+        "wardrobe": {
+          "queries": 243,
+          "R@1": 0.43209876543209874
+        }
+      },
+      "subsets": {
+        "clean": {
+          "queries": 296,
+          "R@1": 0.5540540540540541
+        },
+        "truncated": {
+          "queries": 134,
+          "R@1": 0.5373134328358209
+        },
+        "occluded": {
+          "queries": 73,
+          "R@1": 0.3561643835616438
+        },
+        "slightly_occluded": {
+          "queries": 174,
+          "R@1": 0.5402298850574713
+        }
+      }
+    },
+    {
+      "query_set": "queries_sam",
+      "recipe": "cls",
+      "scoring": "combined",
+      "alpha": 0.75,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.5099337748344371,
+      "R@5": 0.9105960264900662,
+      "R@10": 0.9635761589403974,
+      "photos": 604,
+      "gallery_meshes": 395,
+      "R@1_low": 0.47019867549668876,
+      "R@1_high": 0.5513245033112583,
+      "cat@1": 0.9304635761589404,
+      "R@1_inside_category": 0.5364238410596026,
+      "macro_R@1": 0.4978853892365742,
+      "per_category": {
+        "bookcase": {
+          "queries": 361,
+          "R@1": 0.5595567867036011
+        },
+        "wardrobe": {
+          "queries": 243,
+          "R@1": 0.43621399176954734
+        }
+      },
+      "subsets": {
+        "clean": {
+          "queries": 296,
+          "R@1": 0.543918918918919
+        },
+        "truncated": {
+          "queries": 134,
+          "R@1": 0.5
+        },
+        "occluded": {
+          "queries": 73,
+          "R@1": 0.3287671232876712
+        },
+        "slightly_occluded": {
+          "queries": 174,
+          "R@1": 0.5344827586206896
+        }
+      }
+    }
+  ]
+}

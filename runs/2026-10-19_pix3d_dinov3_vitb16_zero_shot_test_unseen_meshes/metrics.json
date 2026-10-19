@@ -1,0 +1,168 @@
+{
+  "run_name": "2026-10-19_pix3d_dinov3_vitb16_zero_shot_test_unseen_meshes",
+  "date": "2026-10-19T17:49:46+05:30",
+  "git_commit": "69a4ad013e1cf17263dcb0bf89880b16f022749a",
+  "git_dirty": true,
+  "mode": "zero_shot",
+  "dataset": "pix3d",
+  "photos": "test",
+  "split": "unseen_meshes",
+  "photo_count": 2047,
+  "backbone": "dinov3_vitb16",
+  "feature_files": {
+    "data/derived/features/dinov3_vitb16/pix3d_renders.npz": "b7a479d83a86aab34cd9ce2726187d609fef270092c73dcd769c49131465991b",
+    "data/derived/features/dinov3_vitb16/pix3d_queries_reference.npz": "e499b952c2821e63cad327b66933dc1f668945c6ceeb355f9ea548b5fdcba439",
+    "data/derived/features/dinov3_vitb16/pix3d_queries_sam.npz": "652609734c6971492140bc83af7642f294a4868d0d03cb76b26973886c890f79"
+  },
+  "lighting": "L2_dark",
+  "rig": "rings25",
+  "mini": false,
+  "results": [
+    {
+      "query_set": "queries_reference",
+      "recipe": "cls",
+      "scoring": "combined",
+      "alpha": 0.75,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.5989252564728872,
+      "R@5": 0.9364924279433317,
+      "R@10": 0.9794821690278456,
+      "photos": 2047,
+      "gallery_meshes": 395,
+      "R@1_low": 0.5779189057156815,
+      "R@1_high": 0.6199438202247189,
+      "cat@1": 0.978505129457743,
+      "R@1_inside_category": 0.6047874938935027,
+      "macro_R@1": 0.6681357725701766,
+      "per_category": {
+        "bed": {
+          "queries": 151,
+          "R@1": 0.5165562913907285
+        },
+        "bookcase": {
+          "queries": 78,
+          "R@1": 0.6282051282051282
+        },
+        "chair": {
+          "queries": 680,
+          "R@1": 0.8058823529411765
+        },
+        "desk": {
+          "queries": 117,
+          "R@1": 0.36752136752136755
+        },
+        "misc": {
+          "queries": 16,
+          "R@1": 1.0
+        },
+        "sofa": {
+          "queries": 536,
+          "R@1": 0.3824626865671642
+        },
+        "table": {
+          "queries": 332,
+          "R@1": 0.5391566265060241
+        },
+        "tool": {
+          "queries": 9,
+          "R@1": 1.0
+        },
+        "wardrobe": {
+          "queries": 128,
+          "R@1": 0.7734375
+        }
+      },
+      "subsets": {
+        "clean": {
+          "queries": 1234,
+          "R@1": 0.6774716369529984
+        },
+        "truncated": {
+          "queries": 322,
+          "R@1": 0.5093167701863354
+        },
+        "occluded": {
+          "queries": 294,
+          "R@1": 0.46598639455782315
+        },
+        "slightly_occluded": {
+          "queries": 343,
+          "R@1": 0.4314868804664723
+        }
+      }
+    },
+    {
+      "query_set": "queries_sam",
+      "recipe": "cls",
+      "scoring": "combined",
+      "alpha": 0.75,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.5432340009770396,
+      "R@5": 0.8695652173913043,
+      "R@10": 0.9379579872984856,
+      "photos": 2047,
+      "gallery_meshes": 395,
+      "R@1_low": 0.5217391304347826,
+      "R@1_high": 0.5652173913043478,
+      "cat@1": 0.9574987787005373,
+      "R@1_inside_category": 0.5554469956033219,
+      "macro_R@1": 0.5787753015069056,
+      "per_category": {
+        "bed": {
+          "queries": 151,
+          "R@1": 0.36423841059602646
+        },
+        "bookcase": {
+          "queries": 78,
+          "R@1": 0.6025641025641025
+        },
+        "chair": {
+          "queries": 680,
+          "R@1": 0.7147058823529412
+        },
+        "desk": {
+          "queries": 117,
+          "R@1": 0.3504273504273504
+        },
+        "misc": {
+          "queries": 16,
+          "R@1": 1.0
+        },
+        "sofa": {
+          "queries": 536,
+          "R@1": 0.39925373134328357
+        },
+        "table": {
+          "queries": 332,
+          "R@1": 0.44879518072289154
+        },
+        "tool": {
+          "queries": 9,
+          "R@1": 0.5555555555555556
+        },
+        "wardrobe": {
+          "queries": 128,
+          "R@1": 0.7734375
+        }
+      },
+      "subsets": {
+        "clean": {
+          "queries": 1234,
+          "R@1": 0.6499189627228525
+        },
+        "truncated": {
+          "queries": 322,
+          "R@1": 0.43167701863354035
+        },
+        "occluded": {
+          "queries": 294,
+          "R@1": 0.32653061224489793
+        },
+        "slightly_occluded": {
+          "queries": 343,
+          "R@1": 0.35276967930029157
+        }
+      }
+    }
+  ]
+}

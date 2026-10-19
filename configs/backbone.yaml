@@ -6,6 +6,11 @@ backbone:
                                      #   cls             = the class token (a summary of the whole image)
                                      #   masked_mean     = the mean of the patch tokens that lie on the object
                                      #   cls_masked_mean = both, joined
+                                     # selected on the test-free photos (zero-shot comparison of the four backbones)
+  zero_shot:                         # scoring of the raw features, without trained heads (evaluation defaults)
+    scoring: combined                # view, mesh, or combined score
+    alpha: 0.75                      # weight of the view score; selected on the test-free photos (0.75 to 0.9 equal).
+                                     # Zero-shot only: after training, alpha is tuned on each split's val part.
   precision: fp16                    # fp16 gives the same features as fp32 at half the memory
   batch_size: 64                     # images processed together during feature extraction
   loader_workers: 4                  # processes that read the image files while the GPU works

@@ -109,8 +109,8 @@ def run(dataset: str, cfg: dict, photos: str = TEST_FREE, split: str | None = No
         split: The split of the photo group; None for the test-free photos.
         query_sets: Query feature sets (None = every query set of the dataset).
         recipes: Feature recipes (None = `backbone.feature_recipe`).
-        scorings: Scorings from SCORINGS (None = ["view"]).
-        alpha: Weight of the view score in the combined score (None = `train.scoring.alpha`).
+        scorings: Scorings from SCORINGS (None = `backbone.zero_shot.scoring`).
+        alpha: Weight of the view score in the combined score (None = `backbone.zero_shot.alpha`).
         backbone: Backbone of the feature files (None = `backbone.name`).
         allow_test: Must be True to evaluate a test part (see the module description).
         tag: Extra word for the run name.
@@ -130,8 +130,9 @@ def run(dataset: str, cfg: dict, photos: str = TEST_FREE, split: str | None = No
     backbone = backbone or cfg["backbone"]["name"]
     query_sets = query_sets or list(extract_features.QUERY_SETS[dataset])
     recipes = recipes or [cfg["backbone"]["feature_recipe"]]
-    scorings = scorings or ["view"]
-    alpha = cfg["train"]["scoring"]["alpha"] if alpha is None else alpha
+    zero_shot = cfg["backbone"]["zero_shot"]
+    scorings = scorings or [zero_shot["scoring"]]
+    alpha = zero_shot["alpha"] if alpha is None else alpha
     for name, values, allowed in (("query set", query_sets, extract_features.QUERY_SETS[dataset]),
                                   ("recipe", recipes, FEATURE_RECIPES), ("scoring", scorings, SCORINGS)):
         unknown = [v for v in values if v not in allowed]

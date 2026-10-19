@@ -19,7 +19,7 @@ and one row per setting in runs/registry.csv. A mini run (--mini) uses the mini 
 The logic is in `src/pipeline/run_evaluation.py` and `src/retrieval/evaluate.py`.
 
 Usage (from the repository root):
-    python scripts/08_evaluate.py --dataset pix3d                                   # test-free photos, both query sets, cls, view score
+    python scripts/08_evaluate.py --dataset pix3d                                   # test-free photos, both query sets, the configured recipe and scoring
     python scripts/08_evaluate.py --dataset pix3d --recipes cls masked_mean cls_masked_mean --scorings view mesh combined
     python scripts/08_evaluate.py --dataset abo --photos val --split unseen_meshes
     python scripts/08_evaluate.py --dataset pix3d --photos test --split seen_meshes --allow-test
@@ -47,8 +47,8 @@ def main() -> None:
     parser.add_argument("--split", choices=paths.SPLIT_NAMES, help="split of the photo group (not for test_free)")
     parser.add_argument("--query-sets", nargs="+", choices=["queries_reference", "queries_sam"], help="query sets (default: all of the dataset)")
     parser.add_argument("--recipes", nargs="+", choices=FEATURE_RECIPES, help="feature recipes (default: backbone.feature_recipe)")
-    parser.add_argument("--scorings", nargs="+", choices=SCORINGS, help="scorings (default: view)")
-    parser.add_argument("--alpha", type=float, help="weight of the view score in the combined score (default: train.scoring.alpha)")
+    parser.add_argument("--scorings", nargs="+", choices=SCORINGS, help="scorings (default: backbone.zero_shot.scoring)")
+    parser.add_argument("--alpha", type=float, help="weight of the view score in the combined score (default: backbone.zero_shot.alpha)")
     parser.add_argument("--backbone", help="backbone of the feature files (default: backbone.name)")
     parser.add_argument("--allow-test", action="store_true", help="allow the test part (the final evaluation, once)")
     parser.add_argument("--tag", help="extra word for the run name")

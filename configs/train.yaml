@@ -18,13 +18,21 @@ train:
   scoring:
     alpha: 0.5                       # score = alpha * best-view score + (1 - alpha) * mesh score
     view_max: hard                   # best-view score: hard = plain maximum; soft = log-sum-exp (smooth maximum)
+  query_images:                      # the prepared query images that a training photo can use; one at random at each use
+    pix3d: [reference, sam]          # reference = the catalog image (Pix3D masks); sam = the image made with the SAM mask
+    abo: [sam]                       # ABO has only SAM masks (the catalog image is the SAM one)
   augment:                           # random changes to training query images
     color_jitter: {brightness: 0.4, contrast: 0.4, saturation: 0.4, hue: 0.1}
     grayscale_p: 0.4                 # probability to make an image grey, so that the model relies on form
     rotation_deg: 10                 # maximum in-plane rotation
     zoom_out_min: 0.85               # the object can shrink to 85 % of the frame
     erasing_p: 0.25                  # probability to cover a small rectangle (imitates occlusion)
-    mask_noise: true                 # small random changes to the mask edge (imitates imperfect masks)
+    mask_noise:                      # small random changes to the object outline (imitates imperfect masks)
+      enabled: true
+      p: 0.5                         # share of the uses with noise
+      erode: [0.005, 0.015]          # the outline moves inwards by 1 to 3 pixels of 224 (more removes thin legs completely)
+      holes_max: 2                   # 0 to 2 small holes in the object
+      hole_radius: [0.015, 0.035]    # radius of a hole: 3 to 8 pixels of 224
     hflip_p: 0.0                     # horizontal flip; off, because some meshes are not mirror-symmetric
   select_by: val_r1                  # keep the checkpoint with the best validation recall@1
   mini_fraction: 0.05                # fraction of the data used by quick --mini runs

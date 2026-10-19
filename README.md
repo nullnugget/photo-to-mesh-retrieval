@@ -63,6 +63,7 @@ Each pipeline step is a Python script in `scripts/`. Run it from the repository 
 | Query images, catalog, and splits | `scripts/03_make_queries.py --dataset pix3d` | available |
 | Renders (25 grey views per mesh) | `scripts/04_render.py --dataset pix3d` (or `abo`) | available |
 | Backbone features of the renders and the query images (feature store) | `scripts/05_extract_features.py --dataset pix3d` (or `abo`) | available |
+| Training of the embedding heads (one split; best checkpoint by val R@1) | `scripts/06_train.py --split seen_meshes` | available |
 | Evaluation (zero-shot): R@1, R@5, R@10, Cat@1, macro R@1 on the test-free photos or a split part | `scripts/08_evaluate.py --dataset pix3d` | available (the test parts need `--allow-test`) |
 | Other steps | n/a | to be written |
 

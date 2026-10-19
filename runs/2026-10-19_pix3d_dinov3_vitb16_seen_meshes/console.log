@@ -1,0 +1,34 @@
+Using cache found in /home/ami/.cache/torch/hub/facebookresearch_dinov3_6876159a11b4df116f30f667f8c9888617df0751
+run 2026-10-19_pix3d_dinov3_vitb16_seen_meshes: 7702 training photos, training gallery 392 meshes, 120 steps per epoch, 30 epochs; heads 1,083,136 parameters
+zero-shot val R@1: pix3d_queries_reference 69.6, pix3d_queries_sam 62.7
+epoch   1/30  loss 3.3490 (instance 3.1519, category 0.6571)  batch R@1  33.6  val R@1 pix3d_queries_reference 68.1, pix3d_queries_sam 64.8  | 225.3 images/s, loader wait 4 %  *best
+epoch   2/30  loss 1.4074 (instance 1.3413, category 0.2204)  batch R@1  68.7  val R@1 pix3d_queries_reference 74.2, pix3d_queries_sam 70.1  | 221.2 images/s, loader wait 7 %  *best
+epoch   3/30  loss 1.1908 (instance 1.1311, category 0.1991)  batch R@1  74.4  val R@1 pix3d_queries_reference 77.8, pix3d_queries_sam 73.2  | 215.4 images/s, loader wait 10 %  *best
+epoch   4/30  loss 1.0853 (instance 1.0299, category 0.1848)  batch R@1  77.0  val R@1 pix3d_queries_reference 78.7, pix3d_queries_sam 74.6  | 211.7 images/s, loader wait 9 %  *best
+epoch   5/30  loss 1.0387 (instance 0.9841, category 0.1820)  batch R@1  78.7  val R@1 pix3d_queries_reference 79.1, pix3d_queries_sam 75.3  | 210.8 images/s, loader wait 10 %  *best
+epoch   6/30  loss 0.9816 (instance 0.9301, category 0.1717)  batch R@1  79.0  val R@1 pix3d_queries_reference 80.0, pix3d_queries_sam 75.2  | 215.6 images/s, loader wait 10 %  *best
+epoch   7/30  loss 0.9366 (instance 0.8858, category 0.1693)  batch R@1  80.5  val R@1 pix3d_queries_reference 80.8, pix3d_queries_sam 75.9  | 214.9 images/s, loader wait 10 %  *best
+epoch   8/30  loss 0.9248 (instance 0.8742, category 0.1689)  batch R@1  81.2  val R@1 pix3d_queries_reference 81.2, pix3d_queries_sam 75.8  | 210.8 images/s, loader wait 12 %  *best
+epoch   9/30  loss 0.8952 (instance 0.8460, category 0.1640)  batch R@1  81.5  val R@1 pix3d_queries_reference 80.9, pix3d_queries_sam 76.3  | 214.2 images/s, loader wait 10 %  *best
+epoch  10/30  loss 0.8614 (instance 0.8130, category 0.1615)  batch R@1  82.8  val R@1 pix3d_queries_reference 82.2, pix3d_queries_sam 77.9  | 212.4 images/s, loader wait 11 %  *best
+epoch  11/30  loss 0.8363 (instance 0.7886, category 0.1590)  batch R@1  82.8  val R@1 pix3d_queries_reference 82.3, pix3d_queries_sam 77.7  | 207.5 images/s, loader wait 12 %
+epoch  12/30  loss 0.8376 (instance 0.7899, category 0.1588)  batch R@1  83.1  val R@1 pix3d_queries_reference 82.2, pix3d_queries_sam 77.0  | 205.4 images/s, loader wait 13 %
+epoch  13/30  loss 0.8068 (instance 0.7597, category 0.1572)  batch R@1  84.0  val R@1 pix3d_queries_reference 82.2, pix3d_queries_sam 78.0  | 204.1 images/s, loader wait 14 %  *best
+epoch  14/30  loss 0.7928 (instance 0.7464, category 0.1547)  batch R@1  83.8  val R@1 pix3d_queries_reference 82.6, pix3d_queries_sam 77.5  | 209.7 images/s, loader wait 12 %
+epoch  15/30  loss 0.7791 (instance 0.7342, category 0.1495)  batch R@1  84.2  val R@1 pix3d_queries_reference 82.5, pix3d_queries_sam 78.8  | 208.4 images/s, loader wait 13 %  *best
+epoch  16/30  loss 0.7639 (instance 0.7185, category 0.1511)  batch R@1  85.1  val R@1 pix3d_queries_reference 82.8, pix3d_queries_sam 78.8  | 209.6 images/s, loader wait 12 %  *best
+epoch  17/30  loss 0.7458 (instance 0.7018, category 0.1468)  batch R@1  85.4  val R@1 pix3d_queries_reference 83.6, pix3d_queries_sam 79.4  | 210.2 images/s, loader wait 12 %  *best
+epoch  18/30  loss 0.7338 (instance 0.6908, category 0.1434)  batch R@1  85.8  val R@1 pix3d_queries_reference 83.4, pix3d_queries_sam 78.8  | 209.8 images/s, loader wait 12 %
+epoch  19/30  loss 0.7224 (instance 0.6791, category 0.1444)  batch R@1  85.8  val R@1 pix3d_queries_reference 83.2, pix3d_queries_sam 78.8  | 205.7 images/s, loader wait 14 %
+epoch  20/30  loss 0.7213 (instance 0.6774, category 0.1465)  batch R@1  85.5  val R@1 pix3d_queries_reference 82.8, pix3d_queries_sam 78.9  | 208.9 images/s, loader wait 13 %
+epoch  21/30  loss 0.7042 (instance 0.6617, category 0.1417)  batch R@1  86.7  val R@1 pix3d_queries_reference 83.3, pix3d_queries_sam 79.8  | 210.2 images/s, loader wait 12 %  *best
+epoch  22/30  loss 0.6951 (instance 0.6534, category 0.1388)  batch R@1  86.3  val R@1 pix3d_queries_reference 82.0, pix3d_queries_sam 78.5  | 210.0 images/s, loader wait 12 %
+epoch  23/30  loss 0.6859 (instance 0.6439, category 0.1400)  batch R@1  86.8  val R@1 pix3d_queries_reference 83.2, pix3d_queries_sam 79.4  | 209.8 images/s, loader wait 12 %
+epoch  24/30  loss 0.6817 (instance 0.6396, category 0.1401)  batch R@1  86.6  val R@1 pix3d_queries_reference 84.0, pix3d_queries_sam 79.9  | 209.5 images/s, loader wait 12 %  *best
+epoch  25/30  loss 0.6713 (instance 0.6297, category 0.1385)  batch R@1  87.0  val R@1 pix3d_queries_reference 83.5, pix3d_queries_sam 80.0  | 212.1 images/s, loader wait 11 %
+epoch  26/30  loss 0.6602 (instance 0.6201, category 0.1336)  batch R@1  87.2  val R@1 pix3d_queries_reference 84.3, pix3d_queries_sam 79.8  | 210.5 images/s, loader wait 12 %  *best
+epoch  27/30  loss 0.6532 (instance 0.6131, category 0.1334)  batch R@1  87.7  val R@1 pix3d_queries_reference 84.0, pix3d_queries_sam 79.4  | 209.9 images/s, loader wait 12 %
+epoch  28/30  loss 0.6497 (instance 0.6093, category 0.1345)  batch R@1  88.0  val R@1 pix3d_queries_reference 84.3, pix3d_queries_sam 79.6  | 209.4 images/s, loader wait 13 %
+epoch  29/30  loss 0.6564 (instance 0.6156, category 0.1360)  batch R@1  87.9  val R@1 pix3d_queries_reference 84.2, pix3d_queries_sam 80.1  | 208.2 images/s, loader wait 13 %  *best
+epoch  30/30  loss 0.6422 (instance 0.6026, category 0.1318)  batch R@1  87.8  val R@1 pix3d_queries_reference 84.1, pix3d_queries_sam 80.4  | 211.2 images/s, loader wait 12 %  *best
+best epoch 30 (mean val R@1 82.2); 18.2 min -> runs/2026-10-19_pix3d_dinov3_vitb16_seen_meshes

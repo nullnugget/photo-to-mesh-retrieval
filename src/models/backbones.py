@@ -18,6 +18,10 @@ Feature recipes (`backbone.feature_recipe` in `configs/backbone.yaml`) make one 
 Every feature vector is scaled to length 1, so that the dot product of two features is their
 cosine similarity (1 = same direction, 0 = unrelated).
 
+The two basic parts ("cls" and "masked_mean") come from the same pass through the backbone.
+`FeatureExtractor.extract_parts` returns both, and `combine_recipe` makes any recipe from them. The
+feature store keeps the two parts, so one extraction serves every recipe.
+
 Loading: `torch.hub.load` takes the model code from GitHub at a fixed commit (downloaded once into
 `~/.cache/torch/hub/`), builds the network with `pretrained=False` (no download of weights), and
 the weights come from the local file named in the configuration.
@@ -32,6 +36,7 @@ import torch.nn.functional as F
 from src import paths
 
 FEATURE_RECIPES = ("cls", "masked_mean", "cls_masked_mean")
+FEATURE_PARTS = ("cls", "masked_mean")  # the basic parts; every recipe is made from them
 
 
 @dataclass(frozen=True)
@@ -69,6 +74,32 @@ def object_masks(images: np.ndarray, background_rgb: tuple[int, int, int]) -> np
     rare and changes the patch weights very little.)
     """
     return (images != np.asarray(background_rgb, dtype=np.uint8)).any(axis=-1)
+
+
+def _unit(vectors: np.ndarray) -> np.ndarray:
+    """Scale each vector (the last axis) to length 1, in float32."""
+    vectors = vectors.astype(np.float32)
+    return vectors / np.linalg.norm(vectors, axis=-1, keepdims=True).clip(min=1e-12)
+
+
+def combine_recipe(parts: dict[str, np.ndarray], recipe: str) -> np.ndarray:
+    """Make the feature vectors of one recipe from the basic parts: float32, unit length.
+
+    Args:
+        parts: "cls" and/or "masked_mean" -> vectors (..., dim). The leading axes can be anything,
+            for example (N,) for queries or (meshes, views) for renders. The vectors can be float16
+            (as in the feature store); each part is scaled to length 1 again in float32.
+        recipe: One of FEATURE_RECIPES.
+
+    Returns:
+        (..., dim) for "cls" and "masked_mean"; (..., 2 x dim) for "cls_masked_mean".
+    """
+    if recipe not in FEATURE_RECIPES:
+        raise ValueError(f"recipe must be one of {FEATURE_RECIPES}, got {recipe!r}")
+    if recipe != "cls_masked_mean":
+        return _unit(parts[recipe])
+    # Two unit vectors joined have length sqrt(2); scaling to length 1 gives both parts equal weight.
+    return _unit(np.concatenate([_unit(parts["cls"]), _unit(parts["masked_mean"])], axis=-1))
 
 
 class FeatureExtractor:
@@ -115,8 +146,36 @@ class FeatureExtractor:
         return shares.flatten(1)  # row by row, the same order as the patch tokens
 
     @torch.inference_mode()
+    def extract_parts(self, images: np.ndarray, masks: np.ndarray | None, parts=FEATURE_PARTS) -> dict[str, np.ndarray]:
+        """Return the basic parts of every image, each scaled to length 1: {part: float32 (N, spec.dim)}.
+
+        One pass through the backbone gives all the parts, so asking for both costs no extra time.
+
+        Args:
+            images: uint8 (N, H, W, 3), RGB.
+            masks: bool (N, H, W), True on the object; usually `object_masks(images, background_rgb)`.
+                Needed for "masked_mean"; can be None for "cls" only.
+            parts: The parts to return, from FEATURE_PARTS.
+        """
+        if "masked_mean" in parts and masks is None:
+            raise ValueError("the part 'masked_mean' needs object masks")
+        outputs: dict[str, list] = {part: [] for part in parts}
+        for start in range(0, len(images), self.batch_size):
+            batch = self._prepare(images[start : start + self.batch_size])
+            with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.half_precision):
+                output = self.model.forward_features(batch)
+            if "cls" in parts:
+                outputs["cls"].append(F.normalize(output["x_norm_clstoken"].float(), dim=-1).cpu())
+            if "masked_mean" in parts:
+                weights = self._patch_weights(masks[start : start + self.batch_size])  # (n, patches)
+                weights = torch.where(weights.sum(1, keepdim=True) > 0, weights, torch.ones_like(weights))  # no object: plain mean
+                tokens = output["x_norm_patchtokens"].float()  # (n, patches, dim)
+                mean = (weights[..., None] * tokens).sum(1) / weights.sum(1, keepdim=True)
+                outputs["masked_mean"].append(F.normalize(mean, dim=-1).cpu())
+        return {part: torch.cat(vectors).numpy().astype(np.float32) for part, vectors in outputs.items()}
+
     def extract(self, images: np.ndarray, masks: np.ndarray | None = None) -> np.ndarray:
-        """Return one unit-length feature vector per image: float32 (N, dim).
+        """Return one unit-length feature vector per image, with this extractor's recipe: float32 (N, dim).
 
         Args:
             images: uint8 (N, H, W, 3), RGB.
@@ -125,19 +184,5 @@ class FeatureExtractor:
         """
         if self.recipe != "cls" and masks is None:
             raise ValueError(f"recipe {self.recipe!r} needs object masks")
-        features = []
-        for start in range(0, len(images), self.batch_size):
-            batch = self._prepare(images[start : start + self.batch_size])
-            with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.half_precision):
-                output = self.model.forward_features(batch)
-            parts = []
-            if self.recipe in ("cls", "cls_masked_mean"):
-                parts.append(F.normalize(output["x_norm_clstoken"].float(), dim=-1))
-            if self.recipe in ("masked_mean", "cls_masked_mean"):
-                weights = self._patch_weights(masks[start : start + self.batch_size])  # (n, patches)
-                weights = torch.where(weights.sum(1, keepdim=True) > 0, weights, torch.ones_like(weights))  # no object: plain mean
-                tokens = output["x_norm_patchtokens"].float()  # (n, patches, dim)
-                mean = (weights[..., None] * tokens).sum(1) / weights.sum(1, keepdim=True)
-                parts.append(F.normalize(mean, dim=-1))
-            features.append(F.normalize(torch.cat(parts, dim=-1), dim=-1).cpu())
-        return torch.cat(features).numpy().astype(np.float32)
+        parts = ("cls",) if self.recipe == "cls" else ("masked_mean",) if self.recipe == "masked_mean" else FEATURE_PARTS
+        return combine_recipe(self.extract_parts(images, masks, parts), self.recipe)

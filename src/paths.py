@@ -48,14 +48,19 @@ RUNS_DIR = ROOT / "runs"
 REGISTRY_CSV = RUNS_DIR / "registry.csv"
 TEST_OUTPUTS_DIR = ROOT / "test_outputs"
 
-FEATURE_KINDS = ("renders", "queries")
+# The feature sets of one dataset: the views of the gallery meshes, and the query images made with
+# the dataset's own masks ("reference", Pix3D only) or with SAM masks.
+FEATURE_SETS = ("renders", "queries_reference", "queries_sam")
 
 
-def features_file(backbone: str, kind: str) -> Path:
-    """Return the feature store file for one backbone, e.g. `dinov3_vitb16_renders.npz`."""
-    if kind not in FEATURE_KINDS:
-        raise ValueError(f"kind must be one of {FEATURE_KINDS}, got {kind!r}")
-    return FEATURES_DIR / f"{backbone}_{kind}.npz"
+def features_file(backbone: str, dataset: str, feature_set: str, features_dir: Path = FEATURES_DIR) -> Path:
+    """Return the feature store file of one set, e.g. `data/derived/features/dinov3_vitb16/pix3d_renders.npz`.
+
+    One folder per backbone holds all of its files, so that the files of a backbone can be removed together.
+    """
+    if feature_set not in FEATURE_SETS:
+        raise ValueError(f"feature_set must be one of {FEATURE_SETS}, got {feature_set!r}")
+    return features_dir / backbone / f"{dataset}_{feature_set}.npz"
 
 
 def split_file(dataset: str, name: str, splits_dir: Path = SPLITS_DIR) -> Path:

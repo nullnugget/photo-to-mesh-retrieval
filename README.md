@@ -62,6 +62,7 @@ Each pipeline step is a Python script in `scripts/`. Run it from the repository 
 | Object masks with SAM 2.1 (Pix3D: from the reference box; ABO: from the detector box) | `scripts/02_segment_photos.py --dataset pix3d` | available (ABO cleaning rules not yet reviewed) |
 | Query images, catalog, and splits | `scripts/03_make_queries.py --dataset pix3d` | available |
 | Renders (25 grey views per mesh) | `scripts/04_render.py --dataset pix3d` (or `abo`) | available |
+| Backbone features of the renders and the query images (feature store) | `scripts/05_extract_features.py --dataset pix3d` (or `abo`) | available |
 | Other steps | n/a | to be written |
 
 ## Data and model credits

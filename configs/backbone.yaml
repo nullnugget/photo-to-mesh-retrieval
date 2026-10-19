@@ -8,6 +8,7 @@ backbone:
                                      #   cls_masked_mean = both, joined
   precision: fp16                    # fp16 gives the same features as fp32 at half the memory
   batch_size: 64                     # images processed together during feature extraction
+  loader_workers: 4                  # processes that read the image files while the GPU works
   image_size: 224                    # input side length in pixels
   normalize:                         # ImageNet colour normalization, which the backbones expect
     mean: [0.485, 0.456, 0.406]

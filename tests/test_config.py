@@ -94,9 +94,9 @@ def test_backbone_settings_point_to_known_entries():
 
 def test_paths_are_absolute_and_inside_the_repository():
     assert paths.ROOT.is_absolute()
-    assert paths.features_file("dinov3_vitb16", "renders") == paths.FEATURES_DIR / "dinov3_vitb16_renders.npz"
+    assert paths.features_file("dinov3_vitb16", "pix3d", "renders") == paths.FEATURES_DIR / "dinov3_vitb16" / "pix3d_renders.npz"
     with pytest.raises(ValueError):
-        paths.features_file("dinov3_vitb16", "photos")
+        paths.features_file("dinov3_vitb16", "pix3d", "photos")
     assert paths.resolve("configs/data.yaml") == paths.ROOT / "configs" / "data.yaml"
 
 

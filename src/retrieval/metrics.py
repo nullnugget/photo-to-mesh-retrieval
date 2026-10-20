@@ -18,6 +18,15 @@ bootstrap draws the same number of queries again at random, with replacement, ma
 computes the metric each time. The middle 95 % of these values is the 95 % interval. To compare
 two settings on the same queries, the paired bootstrap draws the same queries for both, so that
 the shared difficulty of the queries cancels out.
+
+Bootstrap over groups (for example over meshes): the photos of one mesh are not independent. When
+a setting finds a mesh hard, it usually fails on all photos of that mesh together. A part of a
+split by mesh can have many photos but few meshes (Pix3D unseen_meshes val: 1,226 photos of 39
+meshes), and a bootstrap over photos then gives an interval that is much too narrow. With
+`groups`, the bootstrap draws whole groups with replacement (all photos of a drawn mesh come
+together) and computes the metric over all photos of the drawn groups. The answer to "how sure
+are we for new meshes?" needs this; the photo bootstrap answers "how sure are we for new photos of
+these meshes?".
 """
 
 import numpy as np
@@ -73,27 +82,54 @@ def macro_recall(ranks: np.ndarray, groups: np.ndarray, k: int = 1) -> float:
     return float(np.mean([entry[f"R@{k}"] for entry in recall_by_group(ranks, groups, k).values()]))
 
 
-def bootstrap_interval(hits: np.ndarray, samples: int = 2000, seed: int = 0, level: float = 0.95) -> tuple[float, float]:
-    """95 % bootstrap interval of the mean of per-query hits (for example `ranks <= 1`)."""
+def _resampled_means(values: np.ndarray, groups: np.ndarray | None, samples: int, seed: int) -> np.ndarray:
+    """Means of `values` over `samples` bootstrap resamples: float (samples, C) for values of shape (Q, C).
+
+    Without groups, each resample draws Q queries with replacement. With groups (Q,), each resample
+    draws as many groups as there are, with replacement, and averages over all queries of the
+    drawn groups (a group that is drawn twice counts twice).
+    """
     rng = np.random.default_rng(seed)
-    draws = rng.integers(0, len(hits), size=(samples, len(hits)))  # each row: one resample of the queries
-    means = hits[draws].mean(axis=1)
+    if groups is None:
+        sums, counts = values, np.ones(len(values))
+    else:
+        _, group_of = np.unique(groups, return_inverse=True)
+        sums = np.zeros((group_of.max() + 1, values.shape[1]))
+        np.add.at(sums, group_of, values)
+        counts = np.bincount(group_of).astype(float)
+    draws = rng.integers(0, len(sums), size=(samples, len(sums)))  # each row: one resample of the queries or groups
+    return sums[draws].sum(axis=1) / counts[draws].sum(axis=1)[:, None]
+
+
+def bootstrap_interval(hits: np.ndarray, samples: int = 2000, seed: int = 0, level: float = 0.95,
+                       groups: np.ndarray | None = None) -> tuple[float, float]:
+    """95 % bootstrap interval of the mean of per-query hits (for example `ranks <= 1`).
+
+    Args:
+        groups: (Q,), for example the correct mesh of each query: resample whole groups. None =
+            resample single queries.
+    """
+    means = _resampled_means(np.asarray(hits, dtype=float)[:, None], groups, samples, seed)[:, 0]
     tail = (1.0 - level) / 2.0
     return float(np.quantile(means, tail)), float(np.quantile(means, 1.0 - tail))
 
 
-def paired_difference(hits_a: np.ndarray, hits_b: np.ndarray, samples: int = 2000, seed: int = 0) -> dict:
+def paired_difference(hits_a: np.ndarray, hits_b: np.ndarray, samples: int = 2000, seed: int = 0,
+                      groups: np.ndarray | None = None) -> dict:
     """Compare two settings on the same queries: mean(b) - mean(a), with its 95 % interval.
+
+    Args:
+        groups: (Q,), for example the correct mesh of each query: resample whole groups (the same
+            groups for a and b). None = resample single queries.
 
     Returns:
         {"difference", "low", "high", "share_b_better"}: share_b_better is the share of resamples in
         which b scores higher than a (near 1.0 or near 0.0 = a clear difference).
     """
-    rng = np.random.default_rng(seed)
-    draws = rng.integers(0, len(hits_a), size=(samples, len(hits_a)))
-    differences = hits_b[draws].astype(float).mean(axis=1) - hits_a[draws].astype(float).mean(axis=1)
+    means = _resampled_means(np.stack([hits_a, hits_b], axis=1).astype(float), groups, samples, seed)
+    differences = means[:, 1] - means[:, 0]
     return {
-        "difference": float(hits_b.mean() - hits_a.mean()),
+        "difference": float(np.mean(hits_b) - np.mean(hits_a)),
         "low": float(np.quantile(differences, 0.025)),
         "high": float(np.quantile(differences, 0.975)),
         "share_b_better": float((differences > 0).mean()),

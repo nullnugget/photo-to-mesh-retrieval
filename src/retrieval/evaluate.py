@@ -11,8 +11,8 @@ Steps for one setting (recipe and scoring):
 
 1. score every mesh for every query (`src/retrieval/search.py`: view, mesh, or combined score);
 2. find the rank of the correct mesh, overall and among the meshes of the query's category;
-3. compute the metrics (`src/retrieval/metrics.py`): R@1, R@5, R@10 with the 95 % interval of R@1,
-   Cat@1, R@1 inside the category, per-category R@1, macro R@1, and R@1 of the photo subsets
+3. compute the metrics (`src/retrieval/metrics.py`): R@1, R@5, R@10 with two 95 % intervals of R@1
+   (bootstrap over photos, and over meshes: the photos of one mesh are not independent), Cat@1, R@1 inside the category, per-category R@1, macro R@1, and R@1 of the photo subsets
    (clean, truncated, occluded; only for datasets that annotate them);
 4. keep one row per query (ranks and first result), for the failure analysis.
 """
@@ -111,13 +111,16 @@ def evaluate(queries: Queries, gallery: Gallery, scoring: str = "view", alpha: f
     ranks_inside = metrics.ranks_inside_category(scores, correct, queries.categories, gallery.categories)
     category_hits = metrics.category_hits(scores, queries.categories, gallery.categories)
     low, high = metrics.bootstrap_interval(ranks <= 1)
+    low_meshes, high_meshes = metrics.bootstrap_interval(ranks <= 1, groups=queries.mesh_ids)
 
     result = {f"R@{k}": metrics.recall_at_k(ranks, k) for k in TOP_K}
     result.update({
         "photos": len(ranks),
         "gallery_meshes": len(gallery.mesh_ids),
-        "R@1_low": low,  # 95 % bootstrap interval of R@1
+        "R@1_low": low,  # 95 % bootstrap interval of R@1, over photos
         "R@1_high": high,
+        "R@1_low_meshes": low_meshes,  # 95 % bootstrap interval of R@1, over meshes (wider; see metrics.py)
+        "R@1_high_meshes": high_meshes,
         "cat@1": float(category_hits.mean()),
         "R@1_inside_category": metrics.recall_at_k(ranks_inside, 1),
         "macro_R@1": metrics.macro_recall(ranks, queries.categories),

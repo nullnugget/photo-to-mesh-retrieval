@@ -164,7 +164,8 @@ def run(dataset: str, cfg: dict, photos: str = TEST_FREE, split: str | None = No
                                 "alpha": alpha if scoring == "combined" else None,
                                 "photos_not_in_query_set": not_in_set, **result})
                 print(f"{query_set:18s} {recipe:16s} {scoring:9s} photos {result['photos']:6d}  "
-                      f"R@1 {100 * result['R@1']:5.1f} ({100 * result['R@1_low']:.1f} to {100 * result['R@1_high']:.1f})  "
+                      f"R@1 {100 * result['R@1']:5.1f} ({100 * result['R@1_low']:.1f} to {100 * result['R@1_high']:.1f}; "
+                      f"meshes {100 * result['R@1_low_meshes']:.1f} to {100 * result['R@1_high_meshes']:.1f})  "
                       f"R@5 {100 * result['R@5']:5.1f}  R@10 {100 * result['R@10']:5.1f}  "
                       f"Cat@1 {100 * result['cat@1']:5.1f}  macro R@1 {100 * result['macro_R@1']:5.1f}")
 

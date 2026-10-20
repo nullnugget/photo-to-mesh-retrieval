@@ -1,0 +1,332 @@
+{
+  "run_name": "2026-10-20_pix3d_dinov3_vitb16_trained_test_seen_meshes",
+  "date": "2026-10-20T13:35:45+05:30",
+  "git_commit": "3540fe7a09b1b360170297fc3a35e93ecbe3c621",
+  "git_dirty": true,
+  "mode": "trained",
+  "dataset": "pix3d",
+  "photos": "test",
+  "split": "seen_meshes",
+  "photo_count": 1510,
+  "training_run": "2026-10-20_pix3d_dinov3_vitb16_seen_meshes_mix05",
+  "checkpoint": "weights/checkpoints/2026-10-20_pix3d_dinov3_vitb16_seen_meshes_mix05/embedding_heads_best.pt",
+  "checkpoint_epoch": 19,
+  "index": "weights/checkpoints/2026-10-20_pix3d_dinov3_vitb16_seen_meshes_mix05/embedding_heads_best_gallery_pix3d.npz",
+  "backbone": "dinov3_vitb16",
+  "zero_shot": {
+    "scoring": "combined",
+    "alpha": 0.75
+  },
+  "feature_files": {
+    "data/derived/features/dinov3_vitb16/pix3d_renders.npz": "b7a479d83a86aab34cd9ce2726187d609fef270092c73dcd769c49131465991b",
+    "data/derived/features/dinov3_vitb16/pix3d_queries_reference.npz": "e499b952c2821e63cad327b66933dc1f668945c6ceeb355f9ea548b5fdcba439",
+    "data/derived/features/dinov3_vitb16/pix3d_queries_sam.npz": "652609734c6971492140bc83af7642f294a4868d0d03cb76b26973886c890f79"
+  },
+  "mini": false,
+  "results": [
+    {
+      "query_set": "queries_reference",
+      "recipe": "cls",
+      "scoring": "combined",
+      "alpha": 0.5,
+      "mix_weight": 0.5,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.8622516556291391,
+      "R@5": 0.9900662251655629,
+      "R@10": 0.9953642384105961,
+      "photos": 1510,
+      "gallery_meshes": 395,
+      "R@1_low": 0.8456953642384106,
+      "R@1_high": 0.8794701986754967,
+      "R@1_low_meshes": 0.8198499410891953,
+      "R@1_high_meshes": 0.8969528425692072,
+      "cat@1": 0.9781456953642385,
+      "R@1_inside_category": 0.8841059602649006,
+      "macro_R@1": 0.884644113301415,
+      "per_category": {
+        "bed": {
+          "queries": 135,
+          "R@1": 0.8592592592592593
+        },
+        "bookcase": {
+          "queries": 67,
+          "R@1": 0.8059701492537313
+        },
+        "chair": {
+          "queries": 591,
+          "R@1": 0.9441624365482234
+        },
+        "desk": {
+          "queries": 101,
+          "R@1": 0.9108910891089109
+        },
+        "misc": {
+          "queries": 10,
+          "R@1": 1.0
+        },
+        "sofa": {
+          "queries": 303,
+          "R@1": 0.735973597359736
+        },
+        "table": {
+          "queries": 267,
+          "R@1": 0.8089887640449438
+        },
+        "tool": {
+          "queries": 7,
+          "R@1": 1.0
+        },
+        "wardrobe": {
+          "queries": 29,
+          "R@1": 0.896551724137931
+        }
+      },
+      "subsets": {
+        "clean": {
+          "queries": 862,
+          "R@1": 0.9013921113689095
+        },
+        "truncated": {
+          "queries": 248,
+          "R@1": 0.7903225806451613
+        },
+        "occluded": {
+          "queries": 271,
+          "R@1": 0.7970479704797048
+        },
+        "slightly_occluded": {
+          "queries": 257,
+          "R@1": 0.8210116731517509
+        }
+      }
+    },
+    {
+      "query_set": "queries_reference",
+      "recipe": "cls",
+      "scoring": "combined",
+      "alpha": 0.5,
+      "mix_weight": 1.0,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.8589403973509934,
+      "R@5": 0.9887417218543046,
+      "R@10": 0.9940397350993377,
+      "photos": 1510,
+      "gallery_meshes": 395,
+      "R@1_low": 0.8417218543046358,
+      "R@1_high": 0.876158940397351,
+      "R@1_low_meshes": 0.8141618773354993,
+      "R@1_high_meshes": 0.8937987952968504,
+      "cat@1": 0.9794701986754967,
+      "R@1_inside_category": 0.8794701986754967,
+      "macro_R@1": 0.8842407138493767,
+      "per_category": {
+        "bed": {
+          "queries": 135,
+          "R@1": 0.8888888888888888
+        },
+        "bookcase": {
+          "queries": 67,
+          "R@1": 0.8507462686567164
+        },
+        "chair": {
+          "queries": 591,
+          "R@1": 0.9323181049069373
+        },
+        "desk": {
+          "queries": 101,
+          "R@1": 0.8316831683168316
+        },
+        "misc": {
+          "queries": 10,
+          "R@1": 1.0
+        },
+        "sofa": {
+          "queries": 303,
+          "R@1": 0.7227722772277227
+        },
+        "table": {
+          "queries": 267,
+          "R@1": 0.8352059925093633
+        },
+        "tool": {
+          "queries": 7,
+          "R@1": 1.0
+        },
+        "wardrobe": {
+          "queries": 29,
+          "R@1": 0.896551724137931
+        }
+      },
+      "subsets": {
+        "clean": {
+          "queries": 862,
+          "R@1": 0.8955916473317865
+        },
+        "truncated": {
+          "queries": 248,
+          "R@1": 0.8064516129032258
+        },
+        "occluded": {
+          "queries": 271,
+          "R@1": 0.8118081180811808
+        },
+        "slightly_occluded": {
+          "queries": 257,
+          "R@1": 0.7937743190661478
+        }
+      }
+    },
+    {
+      "query_set": "queries_sam",
+      "recipe": "cls",
+      "scoring": "combined",
+      "alpha": 0.5,
+      "mix_weight": 0.5,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.8251655629139073,
+      "R@5": 0.9794701986754967,
+      "R@10": 0.9860927152317881,
+      "photos": 1510,
+      "gallery_meshes": 395,
+      "R@1_low": 0.8052980132450331,
+      "R@1_high": 0.8443874172185429,
+      "R@1_low_meshes": 0.7821309357472024,
+      "R@1_high_meshes": 0.8635609165835417,
+      "cat@1": 0.9688741721854305,
+      "R@1_inside_category": 0.8503311258278146,
+      "macro_R@1": 0.8611292310394261,
+      "per_category": {
+        "bed": {
+          "queries": 135,
+          "R@1": 0.8148148148148148
+        },
+        "bookcase": {
+          "queries": 67,
+          "R@1": 0.7910447761194029
+        },
+        "chair": {
+          "queries": 591,
+          "R@1": 0.9035532994923858
+        },
+        "desk": {
+          "queries": 101,
+          "R@1": 0.8811881188118812
+        },
+        "misc": {
+          "queries": 10,
+          "R@1": 1.0
+        },
+        "sofa": {
+          "queries": 303,
+          "R@1": 0.7326732673267327
+        },
+        "table": {
+          "queries": 267,
+          "R@1": 0.7303370786516854
+        },
+        "tool": {
+          "queries": 7,
+          "R@1": 1.0
+        },
+        "wardrobe": {
+          "queries": 29,
+          "R@1": 0.896551724137931
+        }
+      },
+      "subsets": {
+        "clean": {
+          "queries": 862,
+          "R@1": 0.8747099767981439
+        },
+        "truncated": {
+          "queries": 248,
+          "R@1": 0.7298387096774194
+        },
+        "occluded": {
+          "queries": 271,
+          "R@1": 0.7601476014760148
+        },
+        "slightly_occluded": {
+          "queries": 257,
+          "R@1": 0.7665369649805448
+        }
+      }
+    },
+    {
+      "query_set": "queries_sam",
+      "recipe": "cls",
+      "scoring": "combined",
+      "alpha": 0.5,
+      "mix_weight": 1.0,
+      "photos_not_in_query_set": 0,
+      "R@1": 0.8205298013245033,
+      "R@5": 0.9781456953642385,
+      "R@10": 0.9880794701986755,
+      "photos": 1510,
+      "gallery_meshes": 395,
+      "R@1_low": 0.8006622516556291,
+      "R@1_high": 0.8404139072847682,
+      "R@1_low_meshes": 0.7743175251377278,
+      "R@1_high_meshes": 0.8590011028169809,
+      "cat@1": 0.9668874172185431,
+      "R@1_inside_category": 0.8483443708609272,
+      "macro_R@1": 0.8509584239403863,
+      "per_category": {
+        "bed": {
+          "queries": 135,
+          "R@1": 0.7925925925925926
+        },
+        "bookcase": {
+          "queries": 67,
+          "R@1": 0.746268656716418
+        },
+        "chair": {
+          "queries": 591,
+          "R@1": 0.9069373942470389
+        },
+        "desk": {
+          "queries": 101,
+          "R@1": 0.8514851485148515
+        },
+        "misc": {
+          "queries": 10,
+          "R@1": 1.0
+        },
+        "sofa": {
+          "queries": 303,
+          "R@1": 0.7194719471947195
+        },
+        "table": {
+          "queries": 267,
+          "R@1": 0.7453183520599251
+        },
+        "tool": {
+          "queries": 7,
+          "R@1": 1.0
+        },
+        "wardrobe": {
+          "queries": 29,
+          "R@1": 0.896551724137931
+        }
+      },
+      "subsets": {
+        "clean": {
+          "queries": 862,
+          "R@1": 0.8665893271461717
+        },
+        "truncated": {
+          "queries": 248,
+          "R@1": 0.7338709677419355
+        },
+        "occluded": {
+          "queries": 271,
+          "R@1": 0.7638376383763837
+        },
+        "slightly_occluded": {
+          "queries": 257,
+          "R@1": 0.7587548638132295
+        }
+      }
+    }
+  ]
+}

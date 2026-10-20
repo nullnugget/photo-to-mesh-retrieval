@@ -52,12 +52,6 @@ def output_dirs(mini: bool) -> dict[str, Path]:
     return {"runs": paths.RUNS_DIR, "checkpoints": paths.CHECKPOINTS_DIR, "registry": paths.REGISTRY_CSV}
 
 
-def _eta(start: float, done: int, total: int) -> str:
-    """Time left for the remaining epochs, from the mean time of the epochs so far, as "12 min" or "40 s"."""
-    left = (time.perf_counter() - start) / done * (total - done)
-    return f"{left / 60:.0f} min" if left >= 90 else f"{left:.0f} s"
-
-
 def _flatten(prefix: str, results: dict[str, dict]) -> dict:
     return {f"{prefix}{name}_{key}": round(value, 4) for name, entry in results.items() for key, value in entry.items()
             if key in ("R@1", "R@5", "cat@1", "trained_R@1")}
@@ -140,7 +134,6 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
               f"batch R@1 {100 * row['batch_R@1']:5.1f}  val R@1 " + ", ".join(f"{n} {100 * r['R@1']:.1f}" for n, r in results.items())
               + " (trained alone " + ", ".join(f"{100 * r['trained_R@1']:.1f}" for r in results.values()) + ")"
               + f"  | {row['images_per_second']} images/s, loader wait {100 * row['loader_wait_share']:.0f} %"
-              + f"  | end in about {_eta(start, epoch, epochs)}"
               + ("  *best" if best["epoch"] == epoch else ""), flush=True)  # flush: show the line at once, also through a pipe
         with open(run["run_dir"] / "train_log.csv", "w", newline="") as f:  # rewritten each epoch, so a stopped run keeps its log
             writer = csv.DictWriter(f, fieldnames=list(log_rows[0]))

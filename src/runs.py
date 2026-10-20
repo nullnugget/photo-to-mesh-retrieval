@@ -61,6 +61,7 @@ REGISTRY_COLUMNS = [
     "recipe",  # feature recipe: "cls", "masked_mean", or "cls_masked_mean"
     "scoring",  # "view", "mesh", or "combined"
     "alpha",  # weight of the view score in the combined score
+    "mix_weight",  # trained runs: final = mix_weight × trained + (1 − mix_weight) × zero-shot score
     "render_config",
     "lighting",
     "temperature",

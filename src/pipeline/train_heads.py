@@ -173,7 +173,7 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
             "run_name": run["run_name"], "date": time.strftime("%Y-%m-%d"), "git_commit": commit[:7], "git_dirty": dirty,
             "mode": "trained", "datasets": label, "split": split, "photos": "val", "photo_count": result["photos"],
             "query_set": query_set, "backbone": backbone, "recipe": recipe, "scoring": "combined",
-            "alpha": train_cfg["scoring"]["alpha"], "render_config": cfg["render"]["rig"], "lighting": cfg["render"]["lighting"],
+            "alpha": train_cfg["scoring"]["alpha"], "mix_weight": train_cfg["scoring"]["mix_weight"], "render_config": cfg["render"]["rig"], "lighting": cfg["render"]["lighting"],
             "temperature": train_cfg["loss"]["temperature"], "category_weight": train_cfg["loss"]["category_weight"],
             "epochs": epochs, "best_epoch": best["epoch"], "val_R@1": round(100 * best["value"], 2),
             "R@1": round(100 * result["R@1"], 2), "R@5": round(100 * result["R@5"], 2), "R@10": round(100 * result["R@10"], 2),

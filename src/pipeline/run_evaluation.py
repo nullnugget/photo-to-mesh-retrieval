@@ -1,8 +1,15 @@
 """The evaluation step: retrieval metrics of one dataset for a group of photos, recorded as a run.
 
-Zero-shot mode (the only mode until the embedding heads exist): the stored backbone features are
-compared directly (`src/models/feature_store.py`), without any training. One call evaluates every
-combination of the chosen query sets, feature recipes, and scorings on the same photos.
+Two modes:
+
+- Zero-shot (`run`): the stored backbone features are compared directly
+  (`src/models/feature_store.py`), without any training. One call evaluates every combination of
+  the chosen query sets, feature recipes, and scorings on the same photos.
+- Trained (`run_trained`): a trained checkpoint and its gallery index (`scripts/07_build_index.py`).
+  The final score mixes the trained and the zero-shot scores (`src/retrieval/index.py`); one call
+  can evaluate several mix weights on the same photos. The photos must be of the training split
+  (for a dataset of the training), and the test-free photos do not apply (they include training
+  photos).
 
 Photo groups (`--photos`):
 
@@ -30,6 +37,7 @@ Outputs of one call (a mini run writes into `test_outputs/evaluate_mini/` instea
     runs/<run_name>/config.yaml                                 the settings of the call
     runs/<run_name>/metrics.json                                every result, with the per-category and subset values
     runs/<run_name>/per_query/<query_set>_<recipe>_<scoring>.csv  one row per photo: ranks and first result
+                              <query_set>_mix<mix_weight>.csv      (trained mode)
     runs/registry.csv                                           one row per result
 """
 
@@ -47,7 +55,9 @@ from src.data.splits import load_split, test_free_query_ids
 from src.models.backbones import FEATURE_RECIPES
 from src.models.feature_store import FeatureTable, read_features
 from src.pipeline import extract_features
-from src.retrieval.evaluate import SCORINGS, Gallery, Queries, evaluate
+from src.pipeline.build_index import checkpoint_file, training_record
+from src.retrieval.evaluate import SCORINGS, Gallery, Queries, evaluate, evaluate_scores
+from src.retrieval.index import IndexMismatch, index_file, load_heads, load_index, mix_scores, search_scores
 
 TEST_FREE = "test_free"
 PHOTO_GROUPS = (TEST_FREE, "train", "val", "test")
@@ -223,3 +233,141 @@ def run(dataset: str, cfg: dict, photos: str = TEST_FREE, split: str | None = No
         }, registry=out["registry"])
     print(f"run -> {run_dir.relative_to(paths.ROOT)}; {len(results)} rows -> {out['registry'].relative_to(paths.ROOT)}")
     return record
+
+
+# ---------------------------------------------------------------------------------------------
+# Trained mode: the gallery index of a trained checkpoint (`scripts/07_build_index.py`).
+# ---------------------------------------------------------------------------------------------
+
+TRAINED_MODE = "trained"
+
+
+def run_trained(dataset: str, cfg: dict, training_run: str, which: str = "best", photos: str = "val",
+                split: str | None = None, query_sets: list[str] | None = None, mix_weights: list[float] | None = None,
+                allow_test: bool = False, tag: str | None = None, mini: bool = False, device: str = "cuda") -> dict:
+    """Evaluate a trained checkpoint on one photo group with its gallery index; record a run.
+
+    The final score of every gallery mesh is mix_weight × trained + (1 − mix_weight) × zero-shot
+    (`src/retrieval/index.py`). The alpha of the trained score, the zero-shot scoring, and the
+    default mix weight come from the checkpoint (the settings of its training), not from `cfg`.
+
+    Args:
+        dataset: "pix3d" or "abo".
+        cfg: The merged settings (saved into the run folder).
+        training_run: The training run name; its index must exist (`scripts/07_build_index.py`).
+        which: "best" or "last" checkpoint of the run.
+        photos: "train", "val", or "test" (the test-free photos include training photos, so they
+            do not apply to a trained model).
+        split: The split of the photos (None = the split of the training). For a dataset of the
+            training it must be the split of the training: the photos of another split can be
+            training photos of this checkpoint.
+        query_sets: Query feature sets (None = every query set of the dataset).
+        mix_weights: Mix weights to evaluate (None = the mix weight of the training). 1.0 = the
+            trained score alone, 0.0 = the zero-shot score.
+        allow_test: Must be True to evaluate a test part.
+        tag: Extra word for the run name.
+        mini: True = a checkpoint of a mini training; outputs into test_outputs/evaluate_mini/.
+        device: "cuda" or "cpu".
+
+    Raises:
+        TestPhotosLocked: If photos is "test" and allow_test is False.
+        FileNotFoundError: If the index does not exist.
+        IndexMismatch: If the index is not of this checkpoint, or its renders feature file has changed.
+    """
+    if photos == "test" and not allow_test:
+        raise TestPhotosLocked("a test part gives the reported number of its split and is evaluated once, after all "
+                               "selections are fixed; use allow_test (--allow-test) for the final evaluation.")
+    if photos == TEST_FREE:
+        raise ValueError("the test-free photos include training photos; evaluate a trained model on train, val, or test")
+    record = training_record(training_run, mini)
+    split = split or record["split"]
+    if dataset in record["datasets"] and split != record["split"]:
+        raise ValueError(f"the checkpoint trained on the {record['split']} split of {dataset}; photos of the {split} "
+                         f"split can be its training photos")
+    checkpoint_path = checkpoint_file(training_run, which, mini)
+    path = index_file(checkpoint_path, dataset)
+    if not path.exists():
+        raise FileNotFoundError(f"no index {path.relative_to(paths.ROOT)}; build it first: "
+                                f"python scripts/07_build_index.py --run {training_run} --which {which} --datasets {dataset}"
+                                + (" --mini" if mini else ""))
+    index = load_index(path)
+    if index.info["checkpoint_sha256"] != runs.file_sha256(checkpoint_path):
+        raise IndexMismatch(f"{path} was built from another version of {checkpoint_path}; build the index again")
+    checkpoint = runs.load_checkpoint(checkpoint_path)
+    heads = load_heads(checkpoint, device)
+    meta, info = checkpoint["meta"], index.info
+    train_cfg = meta["config"]["train"]
+    backbone, recipe = info["backbone"], info["recipe"]
+    mix_weights = mix_weights if mix_weights is not None else [info["mix_weight"]]
+    query_sets = query_sets or list(extract_features.QUERY_SETS[dataset])
+    features_root, out = extract_features.output_root(False), output_dirs(mini)
+    wanted = photo_ids(dataset, photos, split)
+    flags = {q["query_id"]: q for q in read_table(paths.QUERIES_CSV) if q["dataset"] == dataset}
+    used_files = {info["renders_file"]: info["renders_sha256"]}
+
+    results, per_query = [], {}
+    for query_set in query_sets:
+        query_file = paths.features_file(backbone, dataset, query_set, features_root)
+        table = read_features(query_file)
+        used_files[str(query_file.relative_to(paths.ROOT))] = runs.file_sha256(query_file)
+        present = set(table.ids.tolist())
+        selected = table.select([q for q in wanted if q in present])
+        queries = _queries(selected, recipe)
+        search = search_scores(index, heads, queries.vectors, info["alpha"], info["zero_shot"], device)
+        for mix_weight in mix_weights:
+            result, rows = evaluate_scores(mix_scores(search, mix_weight), queries, index.mesh_ids, index.categories, flags)
+            per_query[f"{query_set}_mix{mix_weight:g}"] = rows
+            results.append({"query_set": query_set, "recipe": recipe, "scoring": "combined", "alpha": info["alpha"],
+                            "mix_weight": mix_weight, "photos_not_in_query_set": len(wanted) - selected.rows, **result})
+            print(f"{query_set:18s} mix {mix_weight:4g}  photos {result['photos']:6d}  "
+                  f"R@1 {100 * result['R@1']:5.1f} ({100 * result['R@1_low']:.1f} to {100 * result['R@1_high']:.1f}; "
+                  f"meshes {100 * result['R@1_low_meshes']:.1f} to {100 * result['R@1_high_meshes']:.1f})  "
+                  f"R@5 {100 * result['R@5']:5.1f}  R@10 {100 * result['R@10']:5.1f}  "
+                  f"Cat@1 {100 * result['cat@1']:5.1f}  macro R@1 {100 * result['macro_R@1']:5.1f}", flush=True)
+
+    # Record the run.
+    run_tag = "_".join(part for part in (TRAINED_MODE, photos, split, tag) if part)
+    run_name = runs.make_run_name(dataset, backbone, run_tag, runs_dir=out["runs"])
+    run_dir = paths.ensure_dir(out["runs"] / run_name)
+    save_config(cfg, run_dir / "config.yaml")
+    for key, rows in per_query.items():
+        _write_per_query(rows, run_dir / "per_query" / f"{key}.csv")
+    commit, dirty = runs.git_state()
+    checkpoint_shown = str(checkpoint_path.relative_to(paths.ROOT))
+    metrics_record = {
+        "run_name": run_name,
+        "date": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "git_commit": commit,
+        "git_dirty": dirty,
+        "mode": TRAINED_MODE,
+        "dataset": dataset,
+        "photos": photos,
+        "split": split,
+        "photo_count": len(wanted),
+        "training_run": training_run,
+        "checkpoint": checkpoint_shown,
+        "checkpoint_epoch": meta["epoch"],
+        "index": str(path.relative_to(paths.ROOT)),
+        "backbone": backbone,
+        "zero_shot": info["zero_shot"],
+        "feature_files": used_files,
+        "mini": mini,
+        "results": results,
+    }
+    (run_dir / "metrics.json").write_text(json.dumps(metrics_record, indent=2) + "\n")
+    for result in results:
+        runs.append_registry({
+            "run_name": run_name, "date": metrics_record["date"][:10], "git_commit": commit[:7], "git_dirty": dirty,
+            "mode": TRAINED_MODE, "datasets": dataset, "split": split, "photos": photos, "photo_count": result["photos"],
+            "query_set": result["query_set"], "backbone": backbone, "recipe": recipe, "scoring": "combined",
+            "alpha": result["alpha"], "mix_weight": result["mix_weight"],
+            "temperature": train_cfg["loss"]["temperature"], "category_weight": train_cfg["loss"]["category_weight"],
+            "epochs": train_cfg["epochs"], "best_epoch": meta["epoch"], "val_R@1": round(100 * meta["val_r1"], 2),
+            "R@1": round(100 * result["R@1"], 2), "R@5": round(100 * result["R@5"], 2), "R@10": round(100 * result["R@10"], 2),
+            "cat@1": round(100 * result["cat@1"], 2), "macro_R@1": round(100 * result["macro_R@1"], 2),
+            "checkpoint_path": checkpoint_shown,
+            "notes": f"training run {training_run} ({which}); R@1 interval over meshes "
+                     f"{100 * result['R@1_low_meshes']:.1f} to {100 * result['R@1_high_meshes']:.1f}" + ("; mini" if mini else ""),
+        }, registry=out["registry"])
+    print(f"run -> {run_dir.relative_to(paths.ROOT)}; {len(results)} rows -> {out['registry'].relative_to(paths.ROOT)}")
+    return metrics_record

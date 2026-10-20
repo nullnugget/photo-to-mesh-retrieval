@@ -100,23 +100,47 @@ def evaluate(queries: Queries, gallery: Gallery, scoring: str = "view", alpha: f
     Raises:
         KeyError: If the correct mesh of a query is not in the gallery.
     """
-    column = {mesh_id: index for index, mesh_id in enumerate(gallery.mesh_ids.tolist())}
-    missing = sorted({m for m in queries.mesh_ids.tolist() if m not in column})
+    correct_columns(queries.mesh_ids, gallery.mesh_ids)  # fail before the scores are calculated
+    scores = score_meshes(queries.vectors, gallery.views, scoring, alpha)
+    return evaluate_scores(scores, queries, gallery.mesh_ids, gallery.categories, flags)
+
+
+def correct_columns(query_mesh_ids: np.ndarray, gallery_mesh_ids: np.ndarray) -> np.ndarray:
+    """Return the gallery column of the correct mesh of every query. KeyError if one is missing."""
+    column = {mesh_id: index for index, mesh_id in enumerate(gallery_mesh_ids.tolist())}
+    missing = sorted({m for m in query_mesh_ids.tolist() if m not in column})
     if missing:
         raise KeyError(f"{len(missing)} correct meshes are not in the gallery, for example {missing[:3]}")
-    correct = np.array([column[m] for m in queries.mesh_ids.tolist()])
+    return np.array([column[m] for m in query_mesh_ids.tolist()])
 
-    scores = score_meshes(queries.vectors, gallery.views, scoring, alpha)
+
+def evaluate_scores(scores: np.ndarray, queries: Queries, gallery_mesh_ids: np.ndarray, gallery_categories: np.ndarray,
+                    flags: dict[str, dict] | None = None) -> tuple[dict, list[dict]]:
+    """Compute the metrics from a ready score matrix; return (metrics, one row per query).
+
+    `evaluate` calls it with the zero-shot scores; the evaluation of a trained checkpoint calls it
+    with the mixed scores of the gallery index (`src/retrieval/index.py`).
+
+    Args:
+        scores: float (Q, M): the score of every gallery mesh for every query (higher = better).
+        queries: The query labels (the vectors are not used).
+        gallery_mesh_ids, gallery_categories: (M,), in the column order of `scores`.
+        flags: As in `evaluate`.
+
+    Raises:
+        KeyError: If the correct mesh of a query is not in the gallery.
+    """
+    correct = correct_columns(queries.mesh_ids, gallery_mesh_ids)
     ranks = metrics.correct_ranks(scores, correct)
-    ranks_inside = metrics.ranks_inside_category(scores, correct, queries.categories, gallery.categories)
-    category_hits = metrics.category_hits(scores, queries.categories, gallery.categories)
+    ranks_inside = metrics.ranks_inside_category(scores, correct, queries.categories, gallery_categories)
+    category_hits = metrics.category_hits(scores, queries.categories, gallery_categories)
     low, high = metrics.bootstrap_interval(ranks <= 1)
     low_meshes, high_meshes = metrics.bootstrap_interval(ranks <= 1, groups=queries.mesh_ids)
 
     result = {f"R@{k}": metrics.recall_at_k(ranks, k) for k in TOP_K}
     result.update({
         "photos": len(ranks),
-        "gallery_meshes": len(gallery.mesh_ids),
+        "gallery_meshes": len(gallery_mesh_ids),
         "R@1_low": low,  # 95 % bootstrap interval of R@1, over photos
         "R@1_high": high,
         "R@1_low_meshes": low_meshes,  # 95 % bootstrap interval of R@1, over meshes (wider; see metrics.py)
@@ -136,7 +160,7 @@ def evaluate(queries: Queries, gallery: Gallery, scoring: str = "view", alpha: f
             "mesh_id": str(queries.mesh_ids[i]),
             "rank": int(ranks[i]),
             "rank_inside_category": int(ranks_inside[i]),
-            "first_mesh_id": str(gallery.mesh_ids[first[i]]),
+            "first_mesh_id": str(gallery_mesh_ids[first[i]]),
             "first_score": round(float(scores[i, first[i]]), 4),
             "correct_score": round(float(scores[i, correct[i]]), 4),
         }

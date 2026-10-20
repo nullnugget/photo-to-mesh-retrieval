@@ -7,7 +7,9 @@ train:
   optimizer: {name: adamw, lr: 1.0e-3, weight_decay: 1.0e-4}
   schedule: {name: cosine, warmup_epochs: 1}   # learning rate rises for 1 epoch, then falls along a cosine curve
   heads:
-    embedding_dim: 256               # length of every embedding (query, view, and mesh)
+    design: projection               # projection (768 -> 256, new space), residual (feature + correction, both sides),
+                                     # or query_residual (photo side only; gallery = raw features); see src/models/embedding_heads.py
+    embedding_dim: 256               # length of every embedding (query, view, and mesh); projection only (the residual designs keep 768)
     hidden_dim: 512                  # width of the hidden layer in each projector
     aggregator: attention            # how 25 view embeddings become 1 mesh embedding: attention or mean
     attention_dim: 128               # attention: width of the rating network (Linear embedding_dim -> 128, tanh, dot with a learned vector)

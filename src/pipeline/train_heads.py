@@ -146,7 +146,7 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
         heads_state = {name: getattr(heads, name).state_dict() for name in HEAD_NAMES}
         if value > best["value"]:
             best = {"value": value, "epoch": epoch, "results": results}
-            meta = runs.checkpoint_metadata(run["run_name"], cfg, backbone, feature_files, train_cfg["heads"]["embedding_dim"], epoch, value)
+            meta = runs.checkpoint_metadata(run["run_name"], cfg, backbone, feature_files, heads.embedding_dim, epoch, value)
             runs.save_checkpoint(run["checkpoint_dir"] / "embedding_heads_best.pt", heads_state, meta)
         print(f"epoch {epoch:3d}/{epochs}  loss {row['loss']:.4f} (instance {row['instance']:.4f}, category {row['category']:.4f})  "
               f"batch R@1 {100 * row['batch_R@1']:5.1f}  val R@1 " + ", ".join(f"{n} {100 * r['R@1']:.1f}" for n, r in results.items())
@@ -158,7 +158,7 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
             writer.writeheader()
             writer.writerows(log_rows)
         _write_val_ranks(run["run_dir"] / "val_ranks.npz", val_sets, epoch_ranks)
-    meta = runs.checkpoint_metadata(run["run_name"], cfg, backbone, feature_files, train_cfg["heads"]["embedding_dim"], epochs, value)
+    meta = runs.checkpoint_metadata(run["run_name"], cfg, backbone, feature_files, heads.embedding_dim, epochs, value)
     runs.save_checkpoint(run["checkpoint_dir"] / "embedding_heads_last.pt", heads_state, meta)
 
     # 4. Records.

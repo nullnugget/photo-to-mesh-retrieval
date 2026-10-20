@@ -1,5 +1,6 @@
 """Tests for src/models/embedding_heads.py: shapes, unit length, view masks, parameters, and scores."""
 
+import numpy as np
 import pytest
 import torch
 
@@ -86,3 +87,28 @@ def test_the_gradient_reaches_all_three_heads():
     scores(q, views, meshes, 0.5).sum().backward()
     for name in ("query_projector", "view_projector", "view_aggregator"):
         assert all(p.grad is not None and p.grad.abs().sum() > 0 for p in getattr(heads, name).parameters()), name
+
+
+@pytest.mark.parametrize("design", ["residual", "query_residual"])
+def test_the_residual_designs_start_as_the_zero_shot_scores(design):
+    torch.manual_seed(0)
+    heads = EmbeddingHeads(32, hidden_dim=16, attention_dim=8, design=design)
+    raw_views = torch.nn.functional.normalize(torch.randn(5, 4, 32), dim=-1)
+    raw_queries = torch.nn.functional.normalize(torch.randn(3, 32), dim=-1)
+    q = heads.embed_queries(raw_queries)
+    views, meshes = heads.embed_meshes(raw_views)
+    assert q.shape == (3, 32) and views.shape == (5, 4, 32) and heads.embedding_dim == 32  # the feature length stays
+    assert torch.allclose(q, raw_queries, atol=1e-6) and torch.allclose(views, raw_views, atol=1e-6)
+    zero_shot = search.combined_scores(raw_queries.numpy(), raw_views.numpy(), 0.5)
+    assert np.allclose(scores(q, views, meshes, 0.5).detach().numpy(), zero_shot, atol=1e-5)
+
+
+def test_the_designs_train_different_parts():
+    mlp = 768 * 512 + 512 + 512 * 768 + 768  # 787,712
+    residual = parameter_counts(EmbeddingHeads(768, design="residual"))
+    assert residual["query_projector"] == residual["view_projector"] == mlp and residual["view_aggregator"] == 768 * 128 + 128 + 128
+    query_only = parameter_counts(EmbeddingHeads(768, design="query_residual"))
+    assert query_only == {"query_projector": mlp, "view_projector": 0, "view_aggregator": 0, "total": mlp}
+    assert EmbeddingHeads.from_config({"hidden_dim": 512, "embedding_dim": 256, "aggregator": "attention", "attention_dim": 128}, 768).design == "projection"
+    with pytest.raises(ValueError):
+        EmbeddingHeads(768, design="other")

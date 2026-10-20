@@ -140,7 +140,7 @@ def _ranks(s: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
 
 # Mix weights whose per-photo ranks every validation records (`validate`, `ranks_out`), so that a
 # cross-validation can compare mix weights afterwards: 0 = zero-shot, 1 = trained alone.
-RECORDED_MIX_WEIGHTS = (0.0, 0.25, 0.5, 0.75, 1.0)
+RECORDED_MIX_WEIGHTS = (0.0, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.75, 1.0)
 
 
 @torch.no_grad()

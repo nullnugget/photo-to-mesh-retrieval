@@ -32,6 +32,24 @@ so that the gradients reach the heads):
 
 View dropout: during training, the aggregator sees a random 12 to 25 views of each mesh
 (`random_view_mask`), so that it does not depend on any single view.
+
+Designs (`train.heads.design`). The design above ("projection") learns the training meshes but
+falls below zero-shot on new meshes (Pix3D unseen_meshes, 5-fold cross-validation: −9.5 R@1).
+Two designs stay near the backbone space, which already works on new meshes:
+
+    design           query side                          gallery side (views → mesh)                    starts as
+    projection       768 → 512 → 256, new space           768 → 512 → 256, attention pooling             a random space
+    residual         r + MLP(r), 768, length 1            x + MLP(x), 768; attention pooling             zero-shot
+    query_residual   r + MLP(r), 768, length 1            the raw view features; plain mean              zero-shot
+
+- residual: each projector adds a learned correction to the feature (MLP 768 → 512 → 768) and
+  keeps the 768 numbers of the backbone space. The last layer of the MLP starts at zero, so the
+  correction starts at zero and the scores start as the zero-shot scores. Training moves away from
+  the backbone space only as far as the loss needs.
+- query_residual: only the photos are corrected; the gallery stays as the raw render features
+  and the plain mean. The difference between a photo and a grey render (light, background,
+  texture) is the same for every mesh, so a correction of the photo side can carry over to new
+  meshes; nothing on the gallery side can learn a training mesh.
 """
 
 import torch
@@ -39,6 +57,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 AGGREGATORS = ("attention", "mean")
+DESIGNS = ("projection", "residual", "query_residual")
 
 
 class Projector(nn.Module):
@@ -51,6 +70,32 @@ class Projector(nn.Module):
     def forward(self, features: torch.Tensor) -> torch.Tensor:
         """features (..., in_dim) -> unit-length embeddings (..., out_dim)."""
         return F.normalize(self.layers(features.float()), dim=-1)
+
+
+class ResidualProjector(nn.Module):
+    """feature + MLP(feature) (MLP: Linear dim→hidden, GELU, Linear hidden→dim), then scale to length 1.
+
+    The last linear layer starts at zero, so the projector starts as the identity (the feature
+    scaled to length 1, the zero-shot vector).
+    """
+
+    def __init__(self, dim: int, hidden_dim: int):
+        super().__init__()
+        self.layers = nn.Sequential(nn.Linear(dim, hidden_dim), nn.GELU(), nn.Linear(hidden_dim, dim))
+        nn.init.zeros_(self.layers[2].weight)
+        nn.init.zeros_(self.layers[2].bias)
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        """features (..., dim) -> unit-length embeddings (..., dim)."""
+        features = features.float()
+        return F.normalize(features + self.layers(features), dim=-1)
+
+
+class RawViews(nn.Module):
+    """No parameters: the view features themselves, scaled to length 1 (design "query_residual")."""
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        return F.normalize(features.float(), dim=-1)
 
 
 class QueryProjector(Projector):
@@ -113,16 +158,30 @@ class EmbeddingHeads(nn.Module):
     """The three heads together. They only work as a set, so they are trained and saved together."""
 
     def __init__(self, feature_dim: int, hidden_dim: int = 512, embedding_dim: int = 256, aggregator: str = "attention",
-                 attention_dim: int = 128):
+                 attention_dim: int = 128, design: str = "projection"):
+        """See the module description for the designs. For "residual" and "query_residual" the
+        embeddings keep the feature length (embedding_dim is not used); "query_residual" always
+        uses the plain mean (aggregator is not used)."""
         super().__init__()
-        self.query_projector = QueryProjector(feature_dim, hidden_dim, embedding_dim)
-        self.view_projector = ViewProjector(feature_dim, hidden_dim, embedding_dim)
-        self.view_aggregator = ViewAggregator(embedding_dim, aggregator, attention_dim)
+        if design not in DESIGNS:
+            raise ValueError(f"design must be one of {DESIGNS}, got {design!r}")
+        self.design = design
+        if design == "projection":
+            self.query_projector = QueryProjector(feature_dim, hidden_dim, embedding_dim)
+            self.view_projector = ViewProjector(feature_dim, hidden_dim, embedding_dim)
+            self.view_aggregator = ViewAggregator(embedding_dim, aggregator, attention_dim)
+            self.embedding_dim = embedding_dim
+        else:
+            self.query_projector = ResidualProjector(feature_dim, hidden_dim)
+            self.view_projector = ResidualProjector(feature_dim, hidden_dim) if design == "residual" else RawViews()
+            self.view_aggregator = ViewAggregator(feature_dim, aggregator if design == "residual" else "mean", attention_dim)
+            self.embedding_dim = feature_dim
 
     @classmethod
     def from_config(cls, heads_cfg: dict, feature_dim: int) -> "EmbeddingHeads":
-        """Build the heads from `train.heads` and the feature length of the backbone."""
-        return cls(feature_dim, heads_cfg["hidden_dim"], heads_cfg["embedding_dim"], heads_cfg["aggregator"], heads_cfg["attention_dim"])
+        """Build the heads from `train.heads` and the feature length of the backbone (no "design": "projection")."""
+        return cls(feature_dim, heads_cfg["hidden_dim"], heads_cfg["embedding_dim"], heads_cfg["aggregator"], heads_cfg["attention_dim"],
+                   heads_cfg.get("design", "projection"))
 
     def embed_queries(self, query_features: torch.Tensor) -> torch.Tensor:
         """(queries, feature_dim) -> query embeddings (queries, embedding_dim)."""

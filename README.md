@@ -64,6 +64,8 @@ Each pipeline step is a Python script in `scripts/`. Run it from the repository 
 | Renders (25 grey views per mesh) | `scripts/04_render.py --dataset pix3d` (or `abo`) | available |
 | Backbone features of the renders and the query images (feature store) | `scripts/05_extract_features.py --dataset pix3d` (or `abo`) | available |
 | Training of the embedding heads (one split; best checkpoint by val R@1) | `scripts/06_train.py --split seen_meshes` | available |
+| Cross-validation by mesh (one training per fold of the non-test meshes, then the pooled val result) | `scripts/06_train.py --split unseen_meshes --folds all --tag <name>` | available |
+| Pool again, or compare two cross-validations (paired, over meshes) | `scripts/09_cross_validation.py --compare <tag a> <tag b>` | available |
 | Gallery index of a trained checkpoint (embedded once; checked against the validation R@1) | `scripts/07_build_index.py --run <training run>` | available |
 | Evaluation (zero-shot): R@1, R@5, R@10, Cat@1, macro R@1 on the test-free photos or a split part | `scripts/08_evaluate.py --dataset pix3d` | available (the test parts need `--allow-test`) |
 | Evaluation (trained): the same metrics with the mixed trained and zero-shot score | `scripts/08_evaluate.py --dataset pix3d --run <training run> --photos val` | available (the test parts need `--allow-test`) |

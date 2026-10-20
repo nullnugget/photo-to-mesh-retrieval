@@ -9,6 +9,10 @@ query set.
 
 A mini run (--mini: 5 % of the training photos, 1 epoch) writes into test_outputs/train_mini/.
 
+Cross-validation (--folds): one training per fold of the split's non-test meshes (with the same
+settings and tag), then the pooled validation over all non-test meshes (`src/pipeline/cross_validate.py`).
+--folds all trains every fold; --folds 3 4 5 continues a stopped cross-validation.
+
 The logic is in `src/pipeline/train_heads.py` and `src/train/trainer.py`.
 
 Usage (from the repository root):
@@ -16,6 +20,7 @@ Usage (from the repository root):
     python scripts/06_train.py --split seen_meshes --mini              # quick check
     python scripts/06_train.py --split unseen_meshes --tag first
     python scripts/06_train.py --split seen_meshes --set train.loss.temperature=0.05 --tag tau005
+    python scripts/06_train.py --split unseen_meshes --folds all --tag cvbase       # 5 trainings, then the pooled result
 """
 
 import argparse
@@ -27,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import paths  # noqa: E402
 from src.config import add_config_args, config_from_args  # noqa: E402
-from src.pipeline import extract_features, train_heads  # noqa: E402
+from src.pipeline import cross_validate, extract_features, train_heads  # noqa: E402
 
 
 def main() -> None:
@@ -37,9 +42,17 @@ def main() -> None:
     parser.add_argument("--backbone", help="backbone of the feature files (default: backbone.name)")
     parser.add_argument("--tag", help="extra word for the run name")
     parser.add_argument("--mini", action="store_true", help="5 %% of the training photos, 1 epoch, into test_outputs/")
+    parser.add_argument("--folds", nargs="+", help="cross-validation: 'all' or fold numbers (needs --tag)")
     add_config_args(parser)
     args = parser.parse_args()
-    train_heads.run(config_from_args(args), split=args.split, datasets=args.datasets, backbone=args.backbone,
+    cfg = config_from_args(args)
+    if args.folds:
+        if not args.tag:
+            parser.error("--folds needs --tag (the name of the cross-validation)")
+        folds = None if args.folds == ["all"] else [int(k) for k in args.folds]
+        cross_validate.run_folds(cfg, args.split, args.tag, folds=folds, datasets=args.datasets, backbone=args.backbone, mini=args.mini)
+        return
+    train_heads.run(cfg, split=args.split, datasets=args.datasets, backbone=args.backbone,
                     tag=args.tag, mini=args.mini)
 
 

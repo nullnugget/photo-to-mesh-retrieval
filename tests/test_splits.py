@@ -8,7 +8,8 @@ import random
 
 import pytest
 
-from src.data.splits import seen_meshes_split, unseen_categories_split, unseen_meshes_split
+from src import paths
+from src.data.splits import mesh_folds, seen_meshes_split, unseen_categories_split, unseen_meshes_split
 
 
 def _synthetic_queries():
@@ -97,3 +98,31 @@ def test_real_seen_meshes_test_part_is_the_v1_evaluation_set():
     split = seen_meshes_split(queries, fixed_test=v1_test_query_ids(annotations))
     assert split["counts"]["test"] == 1510  # the number of queries that v1 evaluated
     assert sum(split["counts"].values()) == 10067
+
+
+def test_folds_use_every_non_test_mesh_once_and_keep_the_test_part():
+    queries = _synthetic_queries()
+    base = unseen_meshes_split(queries, seed=1)
+    folds = mesh_folds(base, queries, folds=3, seed=1)
+    mesh_of = {q["query_id"]: q["mesh_id"] for q in queries}
+    val_photos = [qid for fold in folds for qid in fold["parts"]["val"]]
+    assert sorted(val_photos) == sorted(base["parts"]["train"] + base["parts"]["val"])  # every non-test photo once
+    for fold in folds:
+        _assert_partition(fold, queries)
+        assert fold["parts"]["test"] == base["parts"]["test"]
+        assert not {mesh_of[q] for q in fold["parts"]["val"]} & {mesh_of[q] for q in fold["parts"]["train"]}  # by mesh
+        assert {q.split("/")[1] for q in fold["parts"]["val"]} == {"chair", "sofa", "table"}  # every category in every fold
+    assert [f["name"] for f in folds] == ["unseen_meshes_fold1", "unseen_meshes_fold2", "unseen_meshes_fold3"]
+    assert mesh_folds(base, queries, folds=3, seed=1) == folds  # repeatable
+
+
+def test_folds_need_a_split_by_mesh():
+    queries = _synthetic_queries()
+    with pytest.raises(ValueError, match="by mesh"):
+        mesh_folds(seen_meshes_split(queries, seed=1), queries, folds=3)
+
+
+def test_a_fold_has_a_split_file_name():
+    assert paths.split_file("pix3d", "unseen_meshes_fold2").name == "unseen_meshes_fold2.json"
+    with pytest.raises(ValueError):
+        paths.split_file("pix3d", "unseen_meshes_foldx")

@@ -14,6 +14,8 @@ Steps:
 Outputs (a mini run writes into `test_outputs/train_mini/` instead):
     runs/<run_name>/config.yaml               the settings of the run
     runs/<run_name>/train_log.csv             one row per epoch: losses, learning rate, speed, val metrics
+    runs/<run_name>/val_ranks.npz             the rank of the correct mesh of every val photo, per epoch and
+                                              mix weight (pooled by a cross-validation)
     runs/<run_name>/metrics.json              the best epoch, its val metrics, the zero-shot val R@1, counts
     weights/checkpoints/<run_name>/embedding_heads_best.pt   the heads of the best epoch (self-describing)
     weights/checkpoints/<run_name>/embedding_heads_last.pt   the heads after the last epoch
@@ -55,6 +57,18 @@ def output_dirs(mini: bool) -> dict[str, Path]:
 def _flatten(prefix: str, results: dict[str, dict]) -> dict:
     return {f"{prefix}{name}_{key}": round(value, 4) for name, entry in results.items() for key, value in entry.items()
             if key in ("R@1", "R@5", "cat@1", "trained_R@1")}
+
+
+def _write_val_ranks(path: Path, val_sets: list, epoch_ranks: dict[str, list[np.ndarray]]) -> None:
+    """Save the per-photo ranks of all epochs so far: for each val set, ranks int16 (epochs, mix weights, Q)
+    and the photo labels; "mix_weights" names the rows of the second axis."""
+    arrays = {"mix_weights": np.array(trainer.RECORDED_MIX_WEIGHTS)}
+    for v in val_sets:
+        arrays.update({f"{v.name}__ranks": np.stack(epoch_ranks[v.name]), f"{v.name}__query_ids": v.query_ids.astype(str),
+                       f"{v.name}__mesh_ids": v.mesh_ids.astype(str), f"{v.name}__categories": v.category_names.astype(str)})
+    partial = path.with_name(path.name + ".part.npz")
+    np.savez(partial, **arrays)
+    partial.replace(path)
 
 
 def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None, backbone: str | None = None,
@@ -115,11 +129,15 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
 
     # 3. Epochs.
     log_rows, best = [], {"value": -1.0}
+    epoch_ranks: dict[str, list[np.ndarray]] = {v.name: [] for v in val_sets}
     start = time.perf_counter()
     for epoch in range(1, epochs + 1):
         train_values = trainer.train_epoch(heads, extractor, loader, optimizer, scheduler, gallery, train_cfg,
                                            data_cfg["background_rgb"], generator, device, desc=f"epoch {epoch}/{epochs}")
-        results = trainer.validate(heads, val_sets, galleries, train_cfg["scoring"]["alpha"], train_cfg["scoring"]["mix_weight"])
+        ranks: dict[str, np.ndarray] = {}
+        results = trainer.validate(heads, val_sets, galleries, train_cfg["scoring"]["alpha"], train_cfg["scoring"]["mix_weight"], ranks)
+        for name, value in ranks.items():
+            epoch_ranks[name].append(value)
         value = trainer.selection_value(results)
         row = {"epoch": epoch, "lr": round(scheduler.get_last_lr()[0], 7),
                **{k: round(v, 4) if isinstance(v, float) else v for k, v in train_values.items()},
@@ -139,6 +157,7 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
             writer = csv.DictWriter(f, fieldnames=list(log_rows[0]))
             writer.writeheader()
             writer.writerows(log_rows)
+        _write_val_ranks(run["run_dir"] / "val_ranks.npz", val_sets, epoch_ranks)
     meta = runs.checkpoint_metadata(run["run_name"], cfg, backbone, feature_files, train_cfg["heads"]["embedding_dim"], epochs, value)
     runs.save_checkpoint(run["checkpoint_dir"] / "embedding_heads_last.pt", heads_state, meta)
 

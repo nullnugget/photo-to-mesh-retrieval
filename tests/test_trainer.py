@@ -83,6 +83,12 @@ def test_validation_matches_the_metric_functions():
     assert half["R@1"] == pytest.approx(metrics.recall_at_k(metrics.correct_ranks(mixed.numpy(), targets.numpy()), 1))
     assert trainer.selection_value({"a": {"R@1": 0.6}, "b": {"R@1": 0.4}}) == pytest.approx(0.5)
     assert heads.training  # validation puts the heads back into training mode
+    ranks = {}
+    trainer.validate(heads, [val], {"toy": gallery}, alpha=0.5, mix_weight=0.5, ranks_out=ranks)
+    recorded = ranks["toy_queries_sam"]  # (mix weights, photos)
+    assert recorded.shape == (len(trainer.RECORDED_MIX_WEIGHTS), len(targets))
+    assert (recorded[trainer.RECORDED_MIX_WEIGHTS.index(0.5)] <= 1).mean() == pytest.approx(half["R@1"])
+    assert (recorded[trainer.RECORDED_MIX_WEIGHTS.index(0.0)] <= 1).mean() == pytest.approx(only_zero_shot["R@1"])
 
 
 @pytest.mark.skipif(not hasattr(os, "sched_setaffinity"), reason="CPU binding is Linux only")

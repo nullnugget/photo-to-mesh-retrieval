@@ -75,6 +75,9 @@ class ValSet:
     categories: torch.Tensor  # int64 (Q,)
     zero_shot_scores: torch.Tensor  # float32 (Q, M): zero-shot score of every gallery mesh (raw features; fixed)
     zero_shot_r1: float  # R@1 of the raw features (zero-shot setting), for comparison
+    query_ids: np.ndarray | None = None  # (Q,): for the per-photo record (cross-validation)
+    mesh_ids: np.ndarray | None = None  # (Q,): the correct mesh of each photo
+    category_names: np.ndarray | None = None  # (Q,)
 
 
 def load_galleries(datasets: list[str], backbone: str, recipe: str, category_index: dict[str, int],
@@ -125,6 +128,7 @@ def load_val_sets(datasets: list[str], split: str, backbone: str, recipe: str, g
                 categories=torch.tensor([category_index[c] for c in table.labels["category"]], device=device),
                 zero_shot_scores=torch.from_numpy(raw).to(device),
                 zero_shot_r1=metrics.recall_at_k(metrics.correct_ranks(raw, targets.numpy()), 1),
+                query_ids=table.labels["query_id"], mesh_ids=table.labels["mesh_id"], category_names=table.labels["category"],
             ))
     return sets
 
@@ -134,13 +138,22 @@ def _ranks(s: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     return (s >= s.gather(1, targets[:, None])).sum(dim=1)
 
 
+# Mix weights whose per-photo ranks every validation records (`validate`, `ranks_out`), so that a
+# cross-validation can compare mix weights afterwards: 0 = zero-shot, 1 = trained alone.
+RECORDED_MIX_WEIGHTS = (0.0, 0.25, 0.5, 0.75, 1.0)
+
+
 @torch.no_grad()
 def validate(heads: EmbeddingHeads, val_sets: list[ValSet], galleries: dict[str, Gallery], alpha: float,
-             mix_weight: float = 1.0) -> dict[str, dict]:
+             mix_weight: float = 1.0, ranks_out: dict | None = None) -> dict[str, dict]:
     """Embed the val photos and the full galleries with the current heads; return the metrics of each val set.
 
     The metrics use the final score (mix_weight × trained + (1 − mix_weight) × zero-shot);
     "trained_R@1" is the R@1 of the trained score alone.
+
+    Args:
+        ranks_out: If given, it receives {val set name: int16 (len(RECORDED_MIX_WEIGHTS), Q)}: the
+            rank of the correct mesh of every photo for each recorded mix weight.
     """
     heads.eval()
     embedded = {d: heads.embed_meshes(g.views) for d, g in galleries.items()}  # all views, no dropout
@@ -158,6 +171,10 @@ def validate(heads: EmbeddingHeads, val_sets: list[ValSet], galleries: dict[str,
             "trained_R@1": float((_ranks(trained, val.targets) <= 1).float().mean()),
             "zero_shot_R@1": val.zero_shot_r1,
         }
+        if ranks_out is not None:
+            ranks_out[val.name] = torch.stack([
+                _ranks(w * trained + (1.0 - w) * val.zero_shot_scores, val.targets) for w in RECORDED_MIX_WEIGHTS
+            ]).to(torch.int16).cpu().numpy()
     heads.train()
     return results
 

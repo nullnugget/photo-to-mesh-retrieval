@@ -64,9 +64,14 @@ def features_file(backbone: str, dataset: str, feature_set: str, features_dir: P
 
 
 def split_file(dataset: str, name: str, splits_dir: Path = SPLITS_DIR) -> Path:
-    """Return the file of one split of one dataset, e.g. `data/splits/pix3d/seen_meshes.json`."""
-    if name not in SPLIT_NAMES:
-        raise ValueError(f"name must be one of {SPLIT_NAMES}, got {name!r}")
+    """Return the file of one split of one dataset, e.g. `data/splits/pix3d/seen_meshes.json`.
+
+    A fold of a cross-validation is a split of its own, named `<split>_fold<k>`, for example
+    `data/splits/pix3d/unseen_meshes_fold1.json` (see `src/data/splits.py`, `mesh_folds`).
+    """
+    base, _, fold = name.partition("_fold")
+    if name not in SPLIT_NAMES and not (base in SPLIT_NAMES and fold.isdigit()):
+        raise ValueError(f"name must be one of {SPLIT_NAMES} or '<split>_fold<k>', got {name!r}")
     return splits_dir / dataset / f"{name}.json"
 
 

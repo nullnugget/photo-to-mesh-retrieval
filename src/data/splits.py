@@ -42,6 +42,16 @@ selected on a photo that is a test photo of any split. The "test-free photos" of
 photos that are in no test part of any of its splits (`test_free_query_ids`). Shared settings are
 selected only on them; each test part is evaluated once, after all selections are fixed.
 
+Cross-validation by mesh (folds of "unseen_meshes"). The val part of "unseen_meshes" holds only a
+tenth of the meshes (Pix3D: 39). Photos of one mesh succeed or fail together, so a val result on 39
+meshes depends mostly on which meshes were drawn, and it can mislead (Pix3D: val +6 for a setting
+that gave 0 on the test part). A cross-validation uses every non-test mesh for validation once:
+the non-test meshes are divided into k folds (stratified by category); fold k is a split of its own
+("unseen_meshes_fold<k>") whose val part is the photos of the fold's meshes, whose train part is
+the photos of all other non-test meshes, and whose test part is the unchanged test part. k
+trainings, one per fold, together validate on every non-test mesh (Pix3D: 315 meshes, 8,020
+photos); `src/train/cross_validation.py` pools their results. The test part stays as it is.
+
 Every split is repeatable: it depends only on the input rows and a seed. Split files are small
 JSON files in `data/splits/<dataset>/` and are tracked in git, so that every run uses the same
 split. A split works for any dataset: it needs only the query id, the category, and the mesh id
@@ -50,7 +60,7 @@ of each photo.
 
 import json
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from src import paths
@@ -204,6 +214,66 @@ def unseen_categories_split(
         val,
         test,
     )
+
+
+def fold_name(split_name: str, fold: int) -> str:
+    """Return the name of one fold of a split, for example "unseen_meshes_fold1"."""
+    return f"{split_name}_fold{fold}"
+
+
+def mesh_folds(base: dict, queries: list[dict], folds: int, seed: int = 42) -> list[dict]:
+    """Divide the non-test meshes of a split into folds; return one split per fold.
+
+    Args:
+        base: The split whose non-test meshes are divided (normally "unseen_meshes"). Its test part
+            stays the test part of every fold.
+        queries: Catalog rows (query_id, category, mesh_id) of every photo of the split.
+        folds: Number of folds k.
+        seed: Seed of the random order of the meshes.
+
+    In each category, the meshes go one by one to the fold that has the fewest meshes of that
+    category (ties: the fewest photos, then the lowest fold number), largest meshes (most photos)
+    first. So every fold gets about the same number of meshes of each category (a category with
+    at least k meshes is in every fold), and the photo counts stay as even as the meshes allow.
+
+    Raises:
+        ValueError: If a mesh has photos in the test part and outside it, or if the rows do not
+            cover the photos of the split.
+    """
+    test = set(base["parts"]["test"])
+    non_test = set(base["parts"]["train"]) | set(base["parts"]["val"])
+    if {row["query_id"] for row in queries} != non_test | test:
+        raise ValueError(f"the rows do not cover exactly the photos of the split {base['name']!r}")
+    rows = [row for row in queries if row["query_id"] not in test]
+    shared = {row["mesh_id"] for row in rows} & {row["mesh_id"] for row in queries if row["query_id"] in test}
+    if shared:
+        raise ValueError(f"{len(shared)} meshes have photos in the test part and outside it; folds by mesh need a split by mesh")
+    rng = random.Random(seed)
+    fold_of_mesh: dict[str, int] = {}
+    for _category, group in _group_by(rows, "category").items():
+        photos = Counter(row["mesh_id"] for row in group)
+        meshes = sorted(photos)
+        rng.shuffle(meshes)
+        meshes.sort(key=lambda mesh: -photos[mesh])  # stable sort: equal counts keep the random order
+        mesh_count, photo_count = [0] * folds, [0] * folds
+        for mesh in meshes:
+            k = min(range(folds), key=lambda i: (mesh_count[i], photo_count[i], i))
+            fold_of_mesh[mesh] = k
+            mesh_count[k] += 1
+            photo_count[k] += photos[mesh]
+    made = []
+    for k in range(folds):
+        val = [row["query_id"] for row in rows if fold_of_mesh[row["mesh_id"]] == k]
+        train = [row["query_id"] for row in rows if fold_of_mesh[row["mesh_id"]] != k]
+        split = _make_split(
+            fold_name(base["name"], k + 1),
+            f"Fold {k + 1} of {folds} of the non-test meshes of {base['name']!r} (by mesh, stratified by category): "
+            f"val = the photos of the fold's meshes, train = the photos of the other non-test meshes, test = the test part of {base['name']!r}.",
+            seed, train, val, base["parts"]["test"],
+        )
+        split.update({"base_split": base["name"], "fold": k + 1, "folds": folds})
+        made.append(split)
+    return made
 
 
 def save_split(split: dict, path: Path) -> Path:

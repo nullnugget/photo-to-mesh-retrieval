@@ -60,7 +60,7 @@ def _eta(start: float, done: int, total: int) -> str:
 
 def _flatten(prefix: str, results: dict[str, dict]) -> dict:
     return {f"{prefix}{name}_{key}": round(value, 4) for name, entry in results.items() for key, value in entry.items()
-            if key in ("R@1", "R@5", "cat@1")}
+            if key in ("R@1", "R@5", "cat@1", "trained_R@1")}
 
 
 def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None, backbone: str | None = None,
@@ -125,7 +125,7 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
     for epoch in range(1, epochs + 1):
         train_values = trainer.train_epoch(heads, extractor, loader, optimizer, scheduler, gallery, train_cfg,
                                            data_cfg["background_rgb"], generator, device, desc=f"epoch {epoch}/{epochs}")
-        results = trainer.validate(heads, val_sets, galleries, train_cfg["scoring"]["alpha"])
+        results = trainer.validate(heads, val_sets, galleries, train_cfg["scoring"]["alpha"], train_cfg["scoring"]["mix_weight"])
         value = trainer.selection_value(results)
         row = {"epoch": epoch, "lr": round(scheduler.get_last_lr()[0], 7),
                **{k: round(v, 4) if isinstance(v, float) else v for k, v in train_values.items()},
@@ -138,6 +138,7 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
             runs.save_checkpoint(run["checkpoint_dir"] / "embedding_heads_best.pt", heads_state, meta)
         print(f"epoch {epoch:3d}/{epochs}  loss {row['loss']:.4f} (instance {row['instance']:.4f}, category {row['category']:.4f})  "
               f"batch R@1 {100 * row['batch_R@1']:5.1f}  val R@1 " + ", ".join(f"{n} {100 * r['R@1']:.1f}" for n, r in results.items())
+              + " (trained alone " + ", ".join(f"{100 * r['trained_R@1']:.1f}" for r in results.values()) + ")"
               + f"  | {row['images_per_second']} images/s, loader wait {100 * row['loader_wait_share']:.0f} %"
               + f"  | end in about {_eta(start, epoch, epochs)}"
               + ("  *best" if best["epoch"] == epoch else ""), flush=True)  # flush: show the line at once, also through a pipe
@@ -156,6 +157,8 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
         "datasets": datasets,
         "backbone": backbone,
         "recipe": recipe,
+        "mix_weight": train_cfg["scoring"]["mix_weight"],
+        "temperature": train_cfg["loss"]["temperature"],
         "mini": mini,
         "training_photos": len(photos),
         "training_images": photo_report["images"],
@@ -183,7 +186,8 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
             "R@1": round(100 * result["R@1"], 2), "R@5": round(100 * result["R@5"], 2), "R@10": round(100 * result["R@10"], 2),
             "cat@1": round(100 * result["cat@1"], 2),
             "checkpoint_path": str(checkpoint.relative_to(paths.ROOT)),
-            "notes": f"{set_dataset}; zero-shot val R@1 {100 * result['zero_shot_R@1']:.1f}" + ("; mini" if mini else ""),
+            "notes": f"{set_dataset}; score mix {train_cfg['scoring']['mix_weight']} trained + zero-shot; trained alone {100 * result['trained_R@1']:.1f}; "
+                     f"zero-shot val R@1 {100 * result['zero_shot_R@1']:.1f}" + ("; mini" if mini else ""),
         }, registry=out["registry"])
     print(f"best epoch {best['epoch']} (mean val R@1 {100 * best['value']:.1f}); {record['minutes']} min -> {run['run_dir'].relative_to(paths.ROOT)}", flush=True)
     return record

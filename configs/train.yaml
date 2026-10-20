@@ -13,10 +13,14 @@ train:
     attention_dim: 128               # attention: width of the rating network (Linear embedding_dim -> 128, tanh, dot with a learned vector)
     view_dropout_min_views: 12       # during training, the aggregator sees a random 12 to 25 views
   loss:
-    temperature: 0.1                 # divides the scores before the softmax; smaller = sharper probabilities
+    temperature: 0.05                # divides the scores before the softmax; smaller = sharper probabilities (0.05 selected on val; 0.1 was the start value)
     category_weight: 0.3             # weight of the category loss in: loss = instance loss + weight * category loss
   scoring:
     alpha: 0.5                       # score = alpha * best-view score + (1 - alpha) * mesh score
+    mix_weight: 0.5                  # final score = mix_weight * trained score + (1 - mix_weight) * zero-shot score
+                                     # (zero-shot score: the raw features with backbone.zero_shot). 1.0 = trained score only.
+                                     # The mix keeps the general knowledge of the frozen features for meshes that the
+                                     # training never saw. It applies to validation (checkpoint selection) and evaluation.
     view_max: hard                   # best-view score: hard = plain maximum; soft = log-sum-exp (smooth maximum)
   query_images:                      # the prepared query images that a training photo can use; one at random at each use
     pix3d: [reference, sam]          # reference = the catalog image (Pix3D masks); sam = the image made with the SAM mask

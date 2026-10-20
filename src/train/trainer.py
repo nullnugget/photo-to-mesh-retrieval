@@ -20,6 +20,17 @@ Pix3D) and of all views are embedded with the current heads, and R@1, R@5, R@10,
 calculated against the full gallery of each dataset. The selection value is the mean R@1 over the
 val query sets; the epoch with the highest value gives the best checkpoint.
 
+The final score mixes the trained score with the zero-shot score of the raw features:
+
+    final = mix_weight × trained score + (1 − mix_weight) × zero-shot score
+
+Both come from the same backbone pass of the photo: the raw feature is compared with the stored raw
+view features (zero-shot), and its query embedding with the trained view and mesh embeddings. The
+heads learn mostly the meshes that they train on; the zero-shot part keeps the general knowledge of
+the frozen backbone, which matters for meshes that the training never saw. mix_weight 1.0 is the
+trained score alone. The validation reports the mixed R@1 (which selects the epoch) and the R@1 of
+the trained score alone ("trained_R@1").
+
 Learning rate: a linear rise from 0 during the warm-up epochs, then a cosine fall to 0 at the end.
 Weight decay applies to the weight matrices only, not to biases or to the rating vector.
 """
@@ -62,6 +73,7 @@ class ValSet:
     features: torch.Tensor  # float16 (Q, feature_dim)
     targets: torch.Tensor  # int64 (Q,), column of the correct mesh in the dataset's gallery
     categories: torch.Tensor  # int64 (Q,)
+    zero_shot_scores: torch.Tensor  # float32 (Q, M): zero-shot score of every gallery mesh (raw features; fixed)
     zero_shot_r1: float  # R@1 of the raw features (zero-shot setting), for comparison
 
 
@@ -111,27 +123,39 @@ def load_val_sets(datasets: list[str], split: str, backbone: str, recipe: str, g
                 features=torch.from_numpy(vectors).to(device, torch.float16),
                 targets=targets.to(device),
                 categories=torch.tensor([category_index[c] for c in table.labels["category"]], device=device),
+                zero_shot_scores=torch.from_numpy(raw).to(device),
                 zero_shot_r1=metrics.recall_at_k(metrics.correct_ranks(raw, targets.numpy()), 1),
             ))
     return sets
 
 
+def _ranks(s: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    """Rank of the correct mesh (1 = first); ties count against it, as in metrics.correct_ranks."""
+    return (s >= s.gather(1, targets[:, None])).sum(dim=1)
+
+
 @torch.no_grad()
-def validate(heads: EmbeddingHeads, val_sets: list[ValSet], galleries: dict[str, Gallery], alpha: float) -> dict[str, dict]:
-    """Embed the val photos and the full galleries with the current heads; return the metrics of each val set."""
+def validate(heads: EmbeddingHeads, val_sets: list[ValSet], galleries: dict[str, Gallery], alpha: float,
+             mix_weight: float = 1.0) -> dict[str, dict]:
+    """Embed the val photos and the full galleries with the current heads; return the metrics of each val set.
+
+    The metrics use the final score (mix_weight × trained + (1 − mix_weight) × zero-shot);
+    "trained_R@1" is the R@1 of the trained score alone.
+    """
     heads.eval()
     embedded = {d: heads.embed_meshes(g.views) for d, g in galleries.items()}  # all views, no dropout
     results = {}
     for val in val_sets:
         views, meshes = embedded[val.dataset]
-        s = scores(heads.embed_queries(val.features), views, meshes, alpha)
-        correct = s.gather(1, val.targets[:, None])
-        ranks = (s >= correct).sum(dim=1)  # ties count against the correct mesh, as in metrics.correct_ranks
+        trained = scores(heads.embed_queries(val.features), views, meshes, alpha)
+        s = mix_weight * trained + (1.0 - mix_weight) * val.zero_shot_scores
+        ranks = _ranks(s, val.targets)
         first_category = galleries[val.dataset].categories[s.argmax(dim=1)]
         results[val.name] = {
             "photos": len(ranks),
             **{f"R@{k}": float((ranks <= k).float().mean()) for k in (1, 5, 10)},
             "cat@1": float((first_category == val.categories).float().mean()),
+            "trained_R@1": float((_ranks(trained, val.targets) <= 1).float().mean()),
             "zero_shot_R@1": val.zero_shot_r1,
         }
     heads.train()

@@ -67,13 +67,20 @@ def test_validation_matches_the_metric_functions():
     gallery, queries, targets = _toy()
     torch.manual_seed(1)
     heads = EmbeddingHeads(32, hidden_dim=64, embedding_dim=16, attention_dim=8)
-    val = trainer.ValSet("toy_queries_sam", "toy", queries, targets, targets % 2, zero_shot_r1=0.0)
+    zero_shot = queries @ gallery.views.mean(dim=1).T  # any fixed scores
+    val = trainer.ValSet("toy_queries_sam", "toy", queries, targets, targets % 2, zero_shot_scores=zero_shot, zero_shot_r1=0.0)
     result = trainer.validate(heads, [val], {"toy": gallery}, alpha=0.5)["toy_queries_sam"]
     with torch.no_grad():
         q = heads.embed_queries(queries)
         views, meshes = heads.embed_meshes(gallery.views)
         expected = metrics.correct_ranks((0.5 * torch.einsum("qd,mvd->qmv", q, views).amax(2) + 0.5 * q @ meshes.T).numpy(), targets.numpy())
     assert result["R@1"] == pytest.approx(metrics.recall_at_k(expected, 1)) and result["photos"] == len(targets)
+    assert result["trained_R@1"] == result["R@1"]  # mix_weight 1.0: the trained score alone
+    only_zero_shot = trainer.validate(heads, [val], {"toy": gallery}, alpha=0.5, mix_weight=0.0)["toy_queries_sam"]
+    assert only_zero_shot["R@1"] == pytest.approx(metrics.recall_at_k(metrics.correct_ranks(zero_shot.numpy(), targets.numpy()), 1))
+    half = trainer.validate(heads, [val], {"toy": gallery}, alpha=0.5, mix_weight=0.5)["toy_queries_sam"]
+    mixed = 0.5 * (0.5 * torch.einsum("qd,mvd->qmv", q, views).amax(2) + 0.5 * q @ meshes.T) + 0.5 * zero_shot
+    assert half["R@1"] == pytest.approx(metrics.recall_at_k(metrics.correct_ranks(mixed.numpy(), targets.numpy()), 1))
     assert trainer.selection_value({"a": {"R@1": 0.6}, "b": {"R@1": 0.4}}) == pytest.approx(0.5)
     assert heads.training  # validation puts the heads back into training mode
 

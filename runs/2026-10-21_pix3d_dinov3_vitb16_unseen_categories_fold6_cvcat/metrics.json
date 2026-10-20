@@ -1,0 +1,50 @@
+{
+  "run_name": "2026-10-21_pix3d_dinov3_vitb16_unseen_categories_fold6_cvcat",
+  "split": "unseen_categories_fold6",
+  "datasets": [
+    "pix3d"
+  ],
+  "backbone": "dinov3_vitb16",
+  "recipe": "cls",
+  "mix_weight": 0.75,
+  "temperature": 0.05,
+  "mini": false,
+  "training_photos": 7595,
+  "training_images": {
+    "pix3d_reference": 7595,
+    "pix3d_sam": 7595
+  },
+  "training_gallery_meshes": 305,
+  "epochs": 5,
+  "best_epoch": 2,
+  "best_selection_R@1": 0.6873661577701569,
+  "best_val": {
+    "pix3d_queries_reference": {
+      "photos": 1868,
+      "R@1": 0.7312633991241455,
+      "R@5": 0.9239828586578369,
+      "R@10": 0.978586733341217,
+      "cat@1": 0.947002112865448,
+      "trained_R@1": 0.7355460524559021,
+      "zero_shot_R@1": 0.6316916488222698
+    },
+    "pix3d_queries_sam": {
+      "photos": 1868,
+      "R@1": 0.6434689164161682,
+      "R@5": 0.8543897271156311,
+      "R@10": 0.9116702079772949,
+      "cat@1": 0.9218415021896362,
+      "trained_R@1": 0.652569591999054,
+      "zero_shot_R@1": 0.5615631691648822
+    }
+  },
+  "parameters": {
+    "query_projector": 787712,
+    "view_projector": 787712,
+    "view_aggregator": 98560,
+    "total": 1673984
+  },
+  "minutes": 2.9,
+  "git_commit": "5e303e3fe813984ba5266cdcbfd1117b7760f6a4",
+  "git_dirty": true
+}

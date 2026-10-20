@@ -30,8 +30,10 @@ def test_parameter_counts():
 
 
 def test_from_config_uses_the_training_settings():
-    heads = EmbeddingHeads.from_config(load_config(["train.yaml"])["train"]["heads"], feature_dim=768)
-    assert heads.embed_queries(torch.randn(2, 768)).shape == (2, 256)
+    heads_cfg = load_config(["train.yaml"])["train"]["heads"]
+    heads = EmbeddingHeads.from_config(heads_cfg, feature_dim=768)
+    assert heads.design == heads_cfg["design"]
+    assert heads.embed_queries(torch.randn(2, 768)).shape == (2, heads.embedding_dim)
 
 
 def test_the_rating_is_tanh_attention():

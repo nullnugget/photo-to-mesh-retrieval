@@ -3,11 +3,12 @@
 train:
   seed: 42                           # fixed seed, so that a run can be repeated
   batch_size: 64                     # query images per step; every mesh of the training gallery is a negative in each step
-  epochs: 30
-  optimizer: {name: adamw, lr: 1.0e-3, weight_decay: 1.0e-4}
+  epochs: 5                          # a short training: longer ones learn the training meshes and lose on new meshes
+                                     # (5-fold cross-validation by mesh: 10 epochs worse than 5; 30 epochs worse still)
+  optimizer: {name: adamw, lr: 3.0e-4, weight_decay: 1.0e-4}   # lr 3e-4: the trained score on new meshes is flat over the epochs
   schedule: {name: cosine, warmup_epochs: 1}   # learning rate rises for 1 epoch, then falls along a cosine curve
   heads:
-    design: projection               # projection (768 -> 256, new space), residual (feature + correction, both sides),
+    design: residual                 # projection (768 -> 256, new space), residual (feature + correction, both sides),
                                      # or query_residual (photo side only; gallery = raw features); see src/models/embedding_heads.py
     embedding_dim: 256               # length of every embedding (query, view, and mesh); projection only (the residual designs keep 768)
     hidden_dim: 512                  # width of the hidden layer in each projector
@@ -19,10 +20,11 @@ train:
     category_weight: 0.3             # weight of the category loss in: loss = instance loss + weight * category loss
   scoring:
     alpha: 0.5                       # score = alpha * best-view score + (1 - alpha) * mesh score
-    mix_weight: 0.5                  # final score = mix_weight * trained score + (1 - mix_weight) * zero-shot score
+    mix_weight: 0.75                 # final score = mix_weight * trained score + (1 - mix_weight) * zero-shot score
                                      # (zero-shot score: the raw features with backbone.zero_shot). 1.0 = trained score only.
                                      # The mix keeps the general knowledge of the frozen features for meshes that the
                                      # training never saw. It applies to validation (checkpoint selection) and evaluation.
+                                     # 0.75: the best mean of seen meshes and new meshes (with the residual design, 5 epochs).
     view_max: hard                   # best-view score: hard = plain maximum; soft = log-sum-exp (smooth maximum)
   query_images:                      # the prepared query images that a training photo can use; one at random at each use
     pix3d: [reference, sam]          # reference = the catalog image (Pix3D masks); sam = the image made with the SAM mask

@@ -67,3 +67,12 @@ def test_two_cross_validations_compare_on_the_same_photos(tmp_path):
     result = cross_validation.compare(a, b, 0.5, 0.5)
     assert result["toy_sam"]["difference"] == 0.5 and result["all"]["meshes"] == 2
     assert cross_validation.compare(a, a, 0.0, 0.5)["all"]["difference"] == 0.0  # a's mix equals its zero-shot here
+
+
+def test_a_stopped_fold_run_is_not_found(tmp_path):
+    r = _ranks(2, {0.0: [1]})
+    finished = _fold_run(tmp_path, 1, r, ["q1"], ["a"])
+    stopped = tmp_path / (finished.name + "_2")
+    stopped.mkdir()
+    (stopped / "val_ranks.npz").write_bytes((finished / "val_ranks.npz").read_bytes())  # no metrics.json: stopped
+    assert cross_validation.find_fold_runs("toy", "bb", "unseen_meshes", 1, "cv", tmp_path) == [finished]

@@ -88,8 +88,9 @@ def find_fold_runs(label: str, backbone: str, split: str, folds: int, tag: str, 
     found = []
     for k in range(1, folds + 1):
         pattern = f"*_{label}_{backbone}_{fold_name(split, k)}_{tag}"
-        matches = sorted(p for p in runs_dir.glob(pattern) if (p / "val_ranks.npz").exists())
-        matches += sorted(p for p in runs_dir.glob(pattern + "_[0-9]*") if (p / "val_ranks.npz").exists())
+        # A finished run has metrics.json (written at its end); a stopped run has none and is skipped.
+        matches = [p for p in sorted(runs_dir.glob(pattern)) + sorted(runs_dir.glob(pattern + "_[0-9]*"))
+                   if (p / "metrics.json").exists() and (p / "val_ranks.npz").exists()]
         if len(matches) != 1:
             raise FoldMismatch(f"fold {k}: {len(matches)} finished runs match {pattern!r} in {runs_dir}"
                                + (f": {[m.name for m in matches]}" if matches else ""))

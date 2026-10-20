@@ -44,7 +44,7 @@ def main() -> None:
     cfg = config_from_args(args)
     datasets = args.datasets or list(cfg["data"]["datasets"])
     backbone = args.backbone or cfg["backbone"]["name"]
-    folds = cross_validate.fold_count(cfg, args.split)
+    _kind, folds = cross_validate.fold_plan(cfg, args.split, datasets)
     if args.tag:
         cross_validate.pool_and_record(args.split, args.tag, folds, datasets, backbone, args.mini)
     else:

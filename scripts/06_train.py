@@ -21,6 +21,7 @@ Usage (from the repository root):
     python scripts/06_train.py --split unseen_meshes --tag first
     python scripts/06_train.py --split seen_meshes --set train.loss.temperature=0.05 --tag tau005
     python scripts/06_train.py --split unseen_meshes --folds all --tag cvbase       # 5 trainings, then the pooled result
+    python scripts/06_train.py --split unseen_categories --folds all --tag cvcat     # one training per category, then the pooled result
 """
 
 import argparse

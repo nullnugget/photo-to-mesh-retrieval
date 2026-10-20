@@ -1,6 +1,7 @@
 """The cross-validation step: train one setting on every fold of a split, then pool and record the result.
 
-Steps (the method: `src/train/cross_validation.py`; the folds: `src/data/splits.py`):
+Steps (the method: `src/train/cross_validation.py`; the folds: `src/data/splits.py`; by mesh for
+unseen_meshes, by category for unseen_categories, `data.splits.<split>.cross_validation`):
 
 1. make the fold split files if they do not exist (`data/splits/<dataset>/<split>_fold<k>.json`);
 2. one training per fold (`src/pipeline/train_heads.py`), with the same settings and the same tag;
@@ -32,12 +33,21 @@ from src.pipeline import train_heads
 from src.train import cross_validation
 
 
-def fold_count(cfg: dict, split: str) -> int:
-    """The number of folds of a split (`data.splits.<split>.cross_validation_folds`)."""
-    folds = cfg["data"]["splits"].get(split, {}).get("cross_validation_folds")
-    if not folds:
-        raise ValueError(f"the split {split!r} has no cross_validation_folds setting (a cross-validation needs a split by mesh)")
-    return int(folds)
+def fold_plan(cfg: dict, split: str, datasets: list[str]) -> tuple[str, int]:
+    """The kind and the number of folds of a split.
+
+    `data.splits.<split>.cross_validation`: an integer k = k folds by mesh; "by_category" = one fold
+    per non-test category (the number of categories; the same for every dataset of the training).
+    """
+    setting = cfg["data"]["splits"].get(split, {}).get("cross_validation")
+    if setting == "by_category":
+        counts = {d: cross_validation.category_fold_count(d, split) for d in datasets}
+        if len(set(counts.values())) != 1:
+            raise ValueError(f"the datasets have different numbers of categories {counts}; cross-validate one dataset at a time")
+        return "category", next(iter(counts.values()))
+    if isinstance(setting, int) and setting > 1:
+        return "mesh", setting
+    raise ValueError(f"the split {split!r} has no cross_validation setting (an integer k, or by_category)")
 
 
 def run_folds(cfg: dict, split: str, tag: str, folds: list[int] | None = None, datasets: list[str] | None = None,
@@ -56,11 +66,11 @@ def run_folds(cfg: dict, split: str, tag: str, folds: list[int] | None = None, d
     """
     if not tag:
         raise ValueError("a cross-validation needs a tag (it finds the fold runs by it)")
-    count = fold_count(cfg, split)
     datasets = datasets or list(cfg["data"]["datasets"])
     backbone = backbone or cfg["backbone"]["name"]
+    kind, count = fold_plan(cfg, split, datasets)
     for dataset in datasets:
-        cross_validation.ensure_folds(dataset, split, count, cfg["data"]["splits"]["seed"])
+        cross_validation.ensure_folds(dataset, split, count, cfg["data"]["splits"]["seed"], kind)
     folds = folds or list(range(1, count + 1))
     for k in folds:
         if not 1 <= k <= count:

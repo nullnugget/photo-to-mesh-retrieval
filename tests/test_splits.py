@@ -9,7 +9,7 @@ import random
 import pytest
 
 from src import paths
-from src.data.splits import mesh_folds, seen_meshes_split, unseen_categories_split, unseen_meshes_split
+from src.data.splits import category_folds, mesh_folds, seen_meshes_split, unseen_categories_split, unseen_meshes_split
 
 
 def _synthetic_queries():
@@ -126,3 +126,18 @@ def test_a_fold_has_a_split_file_name():
     assert paths.split_file("pix3d", "unseen_meshes_fold2").name == "unseen_meshes_fold2.json"
     with pytest.raises(ValueError):
         paths.split_file("pix3d", "unseen_meshes_foldx")
+
+
+def test_category_folds_leave_one_category_out():
+    queries = _synthetic_queries()
+    base = unseen_categories_split(queries, held_out=["table"], seed=1)
+    folds = category_folds(base, queries)
+    category_of = {q["query_id"]: q["category"] for q in queries}
+    assert [f["held_out_category"] for f in folds] == ["chair", "sofa"]
+    for fold in folds:
+        _assert_partition(fold, queries)
+        assert fold["parts"]["test"] == base["parts"]["test"]
+        assert {category_of[q] for q in fold["parts"]["val"]} == {fold["held_out_category"]}
+        assert fold["held_out_category"] not in {category_of[q] for q in fold["parts"]["train"]}
+    with pytest.raises(ValueError, match="by category"):
+        category_folds(unseen_meshes_split(queries, seed=1), queries)

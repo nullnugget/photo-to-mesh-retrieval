@@ -13,9 +13,10 @@ data:
       val_fraction: 0.10             # share of each category's other photos kept apart to select checkpoints
     unseen_meshes:                   # meshes split; no photo of a test mesh is used in training
       fractions: {train: 0.70, val: 0.10, test: 0.20}
-      cross_validation_folds: 5      # folds of the non-test meshes (data/splits/<dataset>/unseen_meshes_fold<k>.json)
+      cross_validation: 5            # 5 folds of the non-test meshes (data/splits/<dataset>/unseen_meshes_fold<k>.json)
     unseen_categories:               # whole categories kept out of training
       val_fraction: 0.10
+      cross_validation: by_category  # one fold per non-test category (leave one category out; unseen_categories_fold<k>.json)
       held_out:
         pix3d: [bookcase, wardrobe]
         abo: [lamp, planter, vase, ceiling_light]

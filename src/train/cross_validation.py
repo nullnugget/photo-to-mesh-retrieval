@@ -1,5 +1,11 @@
 """Cross-validation by mesh: the folds, and the pooled validation of their k trainings.
 
+Two kinds of folds: by mesh ("unseen_meshes": k folds of whole meshes) and by category
+("unseen_categories": one fold per non-test category, leave-one-category-out). Everything after
+the folds (training, records, pool, comparison) is the same for both. With category folds the
+intervals over meshes understate the uncertainty, because the categories (few) differ more than
+the meshes; the results per category (`per_category.csv`) are the main result there.
+
 Why: the val part of a split by mesh holds few meshes (Pix3D unseen_meshes: 39). The photos of one
 mesh succeed or fail together, so a val result on 39 meshes depends mostly on which meshes were
 drawn. On Pix3D, the val part showed +6 R@1 for the score mix over zero-shot; the test part
@@ -39,7 +45,7 @@ import yaml
 
 from src import paths
 from src.data.catalog import read_table
-from src.data.splits import fold_name, load_split, mesh_folds, save_split
+from src.data.splits import category_folds, fold_name, load_split, mesh_folds, save_split
 from src.retrieval import metrics
 
 POOLED_RANKS = "pooled_ranks.npz"
@@ -49,19 +55,44 @@ class FoldMismatch(RuntimeError):
     """The fold trainings do not form one cross-validation (missing folds, other settings, overlaps)."""
 
 
-def ensure_folds(dataset: str, split: str, folds: int, seed: int, splits_dir: Path = paths.SPLITS_DIR) -> list[str]:
+FOLD_KINDS = ("mesh", "category")
+
+
+def _split_rows(dataset: str, split: str, splits_dir: Path) -> tuple[dict, list[dict]]:
+    """The split and the catalog rows of its photos."""
+    base = load_split(paths.split_file(dataset, split, splits_dir))
+    wanted = set(base["parts"]["train"]) | set(base["parts"]["val"]) | set(base["parts"]["test"])
+    return base, [r for r in read_table(paths.QUERIES_CSV) if r["dataset"] == dataset and r["query_id"] in wanted]
+
+
+def category_fold_count(dataset: str, split: str, splits_dir: Path = paths.SPLITS_DIR) -> int:
+    """The number of non-test categories of a split (the folds of a cross-validation by category)."""
+    base, rows = _split_rows(dataset, split, splits_dir)
+    test = set(base["parts"]["test"])
+    return len({r["category"] for r in rows if r["query_id"] not in test})
+
+
+def ensure_folds(dataset: str, split: str, folds: int, seed: int, kind: str = "mesh",
+                 splits_dir: Path = paths.SPLITS_DIR) -> list[str]:
     """Make the fold split files of a split if they do not exist; return the fold names.
+
+    Args:
+        kind: "mesh" (k folds of whole meshes, `mesh_folds`) or "category" (one fold per
+            non-test category, `category_folds`; `folds` must equal the number of categories).
 
     The folds depend only on the split, the catalog, and the seed, so existing files are checked
     against a new calculation; a difference (for example after a new catalog) is an error.
 
     Raises:
-        FoldMismatch: If an existing fold file differs from the calculation.
+        FoldMismatch: If an existing fold file differs from the calculation, or if the number of
+            category folds is not `folds`.
     """
-    base = load_split(paths.split_file(dataset, split, splits_dir))
-    rows = [r for r in read_table(paths.QUERIES_CSV) if r["dataset"] == dataset]
-    wanted = set(base["parts"]["train"]) | set(base["parts"]["val"]) | set(base["parts"]["test"])
-    made = mesh_folds(base, [r for r in rows if r["query_id"] in wanted], folds, seed)
+    if kind not in FOLD_KINDS:
+        raise ValueError(f"kind must be one of {FOLD_KINDS}, got {kind!r}")
+    base, rows = _split_rows(dataset, split, splits_dir)
+    made = mesh_folds(base, rows, folds, seed) if kind == "mesh" else category_folds(base, rows, seed)
+    if len(made) != folds:
+        raise FoldMismatch(f"{dataset} {split}: {len(made)} folds, not {folds}")
     for split_dict in made:
         path = paths.split_file(dataset, split_dict["name"], splits_dir)
         if not path.exists():

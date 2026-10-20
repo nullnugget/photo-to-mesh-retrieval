@@ -52,6 +52,13 @@ the photos of all other non-test meshes, and whose test part is the unchanged te
 trainings, one per fold, together validate on every non-test mesh (Pix3D: 315 meshes, 8,020
 photos); `src/train/cross_validation.py` pools their results. The test part stays as it is.
 
+Cross-validation by category (folds of "unseen_categories"). The val part of "unseen_categories" is
+a photo sample of the training categories: nearly all its meshes have training photos (Pix3D: 243 of
+244), so it measures seen meshes, not new categories. A leave-one-category-out cross-validation
+uses each non-test category once as the val part ("unseen_categories_fold<k>": val = all photos of
+category k, train = the photos of the other non-test categories, test = the unchanged test part),
+so every non-test photo is validated by a model that never saw its category.
+
 Every split is repeatable: it depends only on the input rows and a seed. Split files are small
 JSON files in `data/splits/<dataset>/` and are tracked in git, so that every run uses the same
 split. A split works for any dataset: it needs only the query id, the category, and the mesh id
@@ -272,6 +279,45 @@ def mesh_folds(base: dict, queries: list[dict], folds: int, seed: int = 42) -> l
             seed, train, val, base["parts"]["test"],
         )
         split.update({"base_split": base["name"], "fold": k + 1, "folds": folds})
+        made.append(split)
+    return made
+
+
+def category_folds(base: dict, queries: list[dict], seed: int = 42) -> list[dict]:
+    """One fold per non-test category of a split (leave-one-category-out); return one split per fold.
+
+    Args:
+        base: The split whose non-test categories become folds (normally "unseen_categories"). Its
+            test part stays the test part of every fold.
+        queries: Catalog rows (query_id, category, mesh_id) of every photo of the split.
+        seed: Kept in the split record (the folds themselves are not random).
+
+    Fold k holds the k-th category in sorted order.
+
+    Raises:
+        ValueError: If a category has photos in the test part and outside it, or if the rows do not
+            cover the photos of the split.
+    """
+    test = set(base["parts"]["test"])
+    non_test = set(base["parts"]["train"]) | set(base["parts"]["val"])
+    if {row["query_id"] for row in queries} != non_test | test:
+        raise ValueError(f"the rows do not cover exactly the photos of the split {base['name']!r}")
+    rows = [row for row in queries if row["query_id"] not in test]
+    shared = {row["category"] for row in rows} & {row["category"] for row in queries if row["query_id"] in test}
+    if shared:
+        raise ValueError(f"the categories {sorted(shared)} have photos in the test part and outside it; folds by category need a split by category")
+    categories = sorted({row["category"] for row in rows})
+    made = []
+    for k, category in enumerate(categories):
+        val = [row["query_id"] for row in rows if row["category"] == category]
+        train = [row["query_id"] for row in rows if row["category"] != category]
+        split = _make_split(
+            fold_name(base["name"], k + 1),
+            f"Fold {k + 1} of {len(categories)} of {base['name']!r} (leave one category out): val = every photo of the category "
+            f"{category!r}, train = the photos of the other non-test categories, test = the test part of {base['name']!r}.",
+            seed, train, val, base["parts"]["test"],
+        )
+        split.update({"base_split": base["name"], "fold": k + 1, "folds": len(categories), "held_out_category": category})
         made.append(split)
     return made
 

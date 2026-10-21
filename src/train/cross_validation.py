@@ -27,14 +27,23 @@ these records; nothing is calculated again.
 The pooled result:
 
 - the curve: pooled R@1 per epoch (each epoch over all k trainings), for each mix weight;
-- one epoch count for all folds: the epoch with the best mean pooled R@1 over the val query sets,
-  at the mix weight of the training. One fixed count (not the best epoch of each fold) is what a
-  final training on all non-test meshes can use, and it chooses 1 value from the curve, not k;
+- one epoch count for all folds, by the rule `train.final_epoch` of the trainings: "last" (the
+  last epoch; the rule of the final model) or "best" (the epoch with the best mean pooled R@1 over
+  the val query sets, at the mix weight of the training; older trainings without the setting). One
+  fixed count (not the best epoch of each fold) is what a final training on all non-test meshes can
+  use, and "best" chooses 1 value from the curve, not k;
 - at that epoch, for each val query set and mix weight: R@1, R@5, R@10, the 95 % interval of R@1
   over meshes, the paired difference to zero-shot (mix weight 0) over meshes, and R@1 per category.
 
 Two cross-validations of different settings have the same val photos, so `compare` gives their
-paired difference over meshes.
+paired difference over meshes. A joint training (Pix3D + ABO) has the val photos of the Pix3D-only
+training and more; the comparison uses the query sets that both have. `run_ranks` reads the same
+records from one training (no folds), so two single trainings compare in the same way.
+
+Joint trainings by category: the folds of the first dataset decide the folds (`fold_categories`;
+`src/data/splits.py`, `category_folds`). A fold where the other dataset has no photo of the
+held-out category (ABO has no "misc") has no val set of that dataset; the pool takes each query set
+from the folds that have it.
 """
 
 import json
@@ -65,20 +74,27 @@ def _split_rows(dataset: str, split: str, splits_dir: Path) -> tuple[dict, list[
     return base, [r for r in read_table(paths.QUERIES_CSV) if r["dataset"] == dataset and r["query_id"] in wanted]
 
 
-def category_fold_count(dataset: str, split: str, splits_dir: Path = paths.SPLITS_DIR) -> int:
-    """The number of non-test categories of a split (the folds of a cross-validation by category)."""
+def fold_categories(dataset: str, split: str, splits_dir: Path = paths.SPLITS_DIR) -> list[str]:
+    """The non-test categories of a split, sorted (the folds of a cross-validation by category)."""
     base, rows = _split_rows(dataset, split, splits_dir)
     test = set(base["parts"]["test"])
-    return len({r["category"] for r in rows if r["query_id"] not in test})
+    return sorted({r["category"] for r in rows if r["query_id"] not in test})
+
+
+def category_fold_count(dataset: str, split: str, splits_dir: Path = paths.SPLITS_DIR) -> int:
+    """The number of non-test categories of a split (the folds of a cross-validation by category)."""
+    return len(fold_categories(dataset, split, splits_dir))
 
 
 def ensure_folds(dataset: str, split: str, folds: int, seed: int, kind: str = "mesh",
-                 splits_dir: Path = paths.SPLITS_DIR) -> list[str]:
+                 splits_dir: Path = paths.SPLITS_DIR, categories: list[str] | None = None) -> list[str]:
     """Make the fold split files of a split if they do not exist; return the fold names.
 
     Args:
         kind: "mesh" (k folds of whole meshes, `mesh_folds`) or "category" (one fold per
-            non-test category, `category_folds`; `folds` must equal the number of categories).
+            category, `category_folds`; `folds` must equal the number of categories).
+        categories: Category folds only: the categories of the folds (None = the non-test
+            categories of this dataset). A joint training gives those of its first dataset.
 
     The folds depend only on the split, the catalog, and the seed, so existing files are checked
     against a new calculation; a difference (for example after a new catalog) is an error.
@@ -90,7 +106,7 @@ def ensure_folds(dataset: str, split: str, folds: int, seed: int, kind: str = "m
     if kind not in FOLD_KINDS:
         raise ValueError(f"kind must be one of {FOLD_KINDS}, got {kind!r}")
     base, rows = _split_rows(dataset, split, splits_dir)
-    made = mesh_folds(base, rows, folds, seed) if kind == "mesh" else category_folds(base, rows, seed)
+    made = mesh_folds(base, rows, folds, seed) if kind == "mesh" else category_folds(base, rows, seed, categories)
     if len(made) != folds:
         raise FoldMismatch(f"{dataset} {split}: {len(made)} folds, not {folds}")
     for split_dict in made:
@@ -129,12 +145,17 @@ def find_fold_runs(label: str, backbone: str, split: str, folds: int, tag: str, 
     return found
 
 
-def pool(run_dirs: list[Path], split: str) -> dict:
+EPOCH_RULES = ("last", "best")
+
+
+def pool(run_dirs: list[Path], split: str, epoch: str | None = None) -> dict:
     """Pool the val records of the k fold trainings of one cross-validation.
 
     Args:
         run_dirs: One run folder per fold.
         split: The split that was divided, for example "unseen_meshes".
+        epoch: The epoch rule, "last" or "best" (None = `train.final_epoch` of the trainings;
+            "best" if they have no such setting).
 
     Returns:
         {"folds", "epochs", "mix_weights", "mix_weight", "selected_epoch", "curve", "results",
@@ -162,16 +183,21 @@ def pool(run_dirs: list[Path], split: str) -> dict:
     if mix_weight not in weights:
         raise FoldMismatch(f"the mix weight {mix_weight} of the training is not among the recorded weights {weights}")
 
+    rule = epoch or records[0]["config"]["train"].get("final_epoch", "best")
+    if rule not in EPOCH_RULES:
+        raise ValueError(f"the epoch rule must be one of {EPOCH_RULES}, got {rule!r}")
+
     sets = sorted({key.split("__")[0] for r in records for key in r["ranks"] if key.endswith("__ranks")})
     pooled = {}
     for name in sets:
-        parts = {field: np.concatenate([r["ranks"][f"{name}__{field}"] for r in records], axis=-1)
+        have = [r for r in records if f"{name}__ranks" in r["ranks"]]  # a fold without photos of this set has no record of it
+        parts = {field: np.concatenate([r["ranks"][f"{name}__{field}"] for r in have], axis=-1)
                  for field in ("query_ids", "mesh_ids", "categories")}
         if len(set(parts["query_ids"].tolist())) != len(parts["query_ids"]):
             raise FoldMismatch(f"{name}: a val photo is in more than one fold")
-        parts["ranks"] = np.concatenate([r["ranks"][f"{name}__ranks"] for r in records], axis=-1)  # (epochs, W, N)
+        parts["ranks"] = np.concatenate([r["ranks"][f"{name}__ranks"] for r in have], axis=-1)  # (epochs, W, N)
         parts["fold"] = np.concatenate([np.full(r["ranks"][f"{name}__ranks"].shape[-1], int(r["split"].rpartition("_fold")[2]))
-                                        for r in records])
+                                        for r in have])
         pooled[name] = parts
 
     # The curve, and one epoch count for all folds.
@@ -180,7 +206,8 @@ def pool(run_dirs: list[Path], split: str) -> dict:
               "R@1": float((pooled[name]["ranks"][e, i] <= 1).mean()), "R@5": float((pooled[name]["ranks"][e, i] <= 5).mean())}
              for e in range(epochs) for i, w in enumerate(weights) for name in sets]
     selection = [np.mean([(pooled[name]["ranks"][e, w_index] <= 1).mean() for name in sets]) for e in range(epochs)]
-    selected = int(np.argmax(selection))  # the first epoch with the highest value
+    best = int(np.argmax(selection))  # the first epoch with the highest value
+    selected = epochs - 1 if rule == "last" else best
 
     results, per_category = [], []
     zero = weights.index(0.0)
@@ -203,8 +230,8 @@ def pool(run_dirs: list[Path], split: str) -> dict:
                                  **{f"R@1_mix{w:g}": float((ranks[i][member] <= 1).mean()) for i, w in enumerate(weights)}})
     return {
         "split": split, "folds": folds, "epochs": epochs, "mix_weights": weights, "mix_weight": mix_weight,
-        "selected_epoch": selected + 1, "selection_value": float(selection[selected]),
-        "selection_value_last_epoch": float(selection[-1]),
+        "epoch_rule": rule, "selected_epoch": selected + 1, "selection_value": float(selection[selected]),
+        "best_epoch_of_curve": best + 1, "selection_value_last_epoch": float(selection[-1]),
         "curve": curve, "results": results, "per_category": per_category,
         "runs": [r["run_name"] for r in records], "config": records[0]["config"],
         "pooled": {name: {**{k: v for k, v in p.items() if k != "ranks"}, "ranks": p["ranks"][selected]} for name, p in pooled.items()},
@@ -232,28 +259,51 @@ def read_pooled_ranks(path: Path) -> tuple[list[float], dict[str, dict]]:
     return arrays["mix_weights"].tolist(), sets
 
 
-def compare(path_a: Path, path_b: Path, weight_a: float, weight_b: float) -> dict:
-    """Paired difference (b − a) of two cross-validations over the same val photos, over meshes.
+def run_ranks(run_dir: Path, epoch: str | int = "last") -> tuple[list[float], dict[str, dict]]:
+    """Read the val ranks of one training (no folds) at one epoch, in the form of `read_pooled_ranks`.
 
     Args:
-        path_a, path_b: Their `pooled_ranks.npz` files.
+        run_dir: The run folder (with val_ranks.npz and metrics.json).
+        epoch: "last", "best" (the best epoch of the training), or an epoch number (from 1).
+    """
+    run_dir = Path(run_dir)
+    record = json.loads((run_dir / "metrics.json").read_text())
+    with np.load(run_dir / "val_ranks.npz", allow_pickle=False) as data:
+        arrays = {key: data[key] for key in data.files}
+    index = {"last": -1, "best": record["best_epoch"] - 1}[epoch] if isinstance(epoch, str) else int(epoch) - 1
+    sets: dict[str, dict] = {}
+    for key, value in arrays.items():
+        if "__" in key:
+            name, field = key.split("__")
+            sets.setdefault(name, {})[field] = value[index] if field == "ranks" else value
+    return arrays["mix_weights"].tolist(), sets
+
+
+def compare_sets(a: dict[str, dict], b: dict[str, dict], weights_a: list[float], weights_b: list[float],
+                 weight_a: float, weight_b: float) -> dict:
+    """Paired difference (b − a) of two records of per-photo ranks, over meshes, on the query sets that both have.
+
+    Args:
+        a, b: {query set: {"query_ids", "mesh_ids", "ranks" (W, N), ...}} (`read_pooled_ranks`, `run_ranks`).
+        weights_a, weights_b: The mix weights of the rows of each side's ranks.
         weight_a, weight_b: The mix weight of each side (for example each one's training value).
 
     Returns:
         {query set or "all": {"photos", "meshes", "R@1_a", "R@1_b", "difference", "low", "high"}};
-        "all" puts the photos of every query set together (a photo then counts once per set).
+        "all" puts the photos of every shared query set together (a photo then counts once per set).
+        A query set of only one side (for example ABO in a joint training) is not compared.
 
     Raises:
-        FoldMismatch: If the two have different val photos.
+        FoldMismatch: If the two have no query set in common, or different val photos in a shared set.
     """
-    (weights_a, a), (weights_b, b) = read_pooled_ranks(path_a), read_pooled_ranks(path_b)
-    if sorted(a) != sorted(b):
-        raise FoldMismatch(f"different val query sets: {sorted(a)} and {sorted(b)}")
+    shared = sorted(set(a) & set(b))
+    if not shared:
+        raise FoldMismatch(f"no shared val query set: {sorted(a)} and {sorted(b)}")
     out, all_a, all_b, all_groups = {}, [], [], []
-    for name in sorted(a):
+    for name in shared:
         order_b = {q: i for i, q in enumerate(b[name]["query_ids"].tolist())}
         if set(order_b) != set(a[name]["query_ids"].tolist()):
-            raise FoldMismatch(f"{name}: the two cross-validations have different val photos")
+            raise FoldMismatch(f"{name}: the two have different val photos")
         take = np.array([order_b[q] for q in a[name]["query_ids"].tolist()])
         hits_a = (a[name]["ranks"][weights_a.index(weight_a)] <= 1).astype(float)
         hits_b = (b[name]["ranks"][weights_b.index(weight_b)][take] <= 1).astype(float)
@@ -269,3 +319,9 @@ def compare(path_a: Path, path_b: Path, weight_a: float, weight_b: float) -> dic
     out["all"] = {"photos": len(groups), "meshes": len(set(groups.tolist())), "R@1_a": float(np.concatenate(all_a).mean()),
                   "R@1_b": float(np.concatenate(all_b).mean()), "difference": p["difference"], "low": p["low"], "high": p["high"]}
     return out
+
+
+def compare(path_a: Path, path_b: Path, weight_a: float, weight_b: float) -> dict:
+    """Paired difference (b − a) of two cross-validations from their `pooled_ranks.npz` files (`compare_sets`)."""
+    (weights_a, a), (weights_b, b) = read_pooled_ranks(path_a), read_pooled_ranks(path_b)
+    return compare_sets(a, b, weights_a, weights_b, weight_a, weight_b)

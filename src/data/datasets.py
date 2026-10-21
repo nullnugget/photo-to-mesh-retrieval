@@ -60,7 +60,8 @@ def query_image_file(row: dict, kind: str) -> Path:
     return paths.resolve(row["query_path"])  # Pix3D: the dataset's mask; ABO: the SAM mask
 
 
-def training_photos(datasets: list[str], split: str, part: str, query_images_cfg: dict) -> tuple[list[TrainingPhoto], dict]:
+def training_photos(datasets: list[str], split: str, part: str, query_images_cfg: dict,
+                    leave_out: set[str] | None = None) -> tuple[list[TrainingPhoto], dict]:
     """Return the photos of one split part and a short report.
 
     Args:
@@ -68,17 +69,24 @@ def training_photos(datasets: list[str], split: str, part: str, query_images_cfg
         split: The split name, for example "seen_meshes".
         part: "train" (normally), "val", or "test".
         query_images_cfg: `train.query_images`: dataset -> the image kinds to use.
+        leave_out: Categories whose photos are left out (an unseen_categories training: the held-out
+            categories and their near relatives, `src/data/splits.py`, `left_out_categories`).
 
     Returns:
         (photos, report). A photo keeps the images that exist on disk; a photo without any image is
-        left out. The report counts the photos, the images of each kind, and the left-out photos.
+        left out. The report counts the photos, the images of each kind, the photos without images
+        ("left_out"), and the photos left out by category ("left_out_categories": dataset/category -> photos).
     """
     rows = {row["query_id"]: row for row in read_table(paths.QUERIES_CSV)}
-    photos, report = [], {"photos": 0, "images": Counter(), "missing_images": Counter(), "left_out": []}
+    leave_out = leave_out or set()
+    photos, report = [], {"photos": 0, "images": Counter(), "missing_images": Counter(), "left_out": [], "left_out_categories": Counter()}
     for dataset in datasets:
         kinds = query_images_cfg[dataset]
         for query_id in load_split(paths.split_file(dataset, split))["parts"][part]:
             row = rows[query_id]
+            if row["category"] in leave_out:
+                report["left_out_categories"][f"{dataset}/{row['category']}"] += 1
+                continue
             images = []
             for kind in kinds:
                 file = query_image_file(row, kind)
@@ -93,6 +101,7 @@ def training_photos(datasets: list[str], split: str, part: str, query_images_cfg
                 report["left_out"].append(query_id)
     report["photos"] = len(photos)
     report["images"], report["missing_images"] = dict(report["images"]), dict(report["missing_images"])
+    report["left_out_categories"] = dict(sorted(report["left_out_categories"].items()))
     return photos, report
 
 

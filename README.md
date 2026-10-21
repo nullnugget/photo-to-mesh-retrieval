@@ -63,9 +63,12 @@ Each pipeline step is a Python script in `scripts/`. Run it from the repository 
 | Query images, catalog, and splits | `scripts/03_make_queries.py --dataset pix3d` | available |
 | Renders (25 grey views per mesh) | `scripts/04_render.py --dataset pix3d` (or `abo`) | available |
 | Backbone features of the renders and the query images (feature store) | `scripts/05_extract_features.py --dataset pix3d` (or `abo`) | available |
-| Training of the embedding heads (one split; best checkpoint by val R@1) | `scripts/06_train.py --split seen_meshes` | available |
+| Training of the embedding heads (one split; best and last checkpoints) | `scripts/06_train.py --split seen_meshes` | available |
+| Joint training of Pix3D and ABO (one training gallery of both datasets; val of each dataset against its own gallery) | `scripts/06_train.py --split seen_meshes --datasets pix3d abo` | available |
 | Cross-validation by mesh (one training per fold of the non-test meshes, then the pooled val result) | `scripts/06_train.py --split unseen_meshes --folds all --tag <name>` | available |
-| Pool again, or compare two cross-validations (paired, over meshes) | `scripts/09_cross_validation.py --compare <tag a> <tag b>` | available |
+| Cross-validation by category (one training per non-test category; with `--datasets pix3d abo`, ABO follows the Pix3D categories and leaves out the near relatives) | `scripts/06_train.py --split unseen_categories --folds all --tag <name>` | available |
+| Pool again, or compare two cross-validations (paired, over meshes; also Pix3D-only against joint, on the shared val photos) | `scripts/09_cross_validation.py --compare <tag a> <tag b> --epoch last` | available |
+| Compare two single trainings (paired, over meshes) | `scripts/09_cross_validation.py --compare-runs <run a> <run b>` | available |
 | Gallery index of a trained checkpoint (embedded once; checked against the validation R@1) | `scripts/07_build_index.py --run <training run>` | available |
 | Evaluation (zero-shot): R@1, R@5, R@10, Cat@1, macro R@1 on the test-free photos or a split part | `scripts/08_evaluate.py --dataset pix3d` | available (the test parts need `--allow-test`) |
 | Evaluation (trained): the same metrics with the mixed trained and zero-shot score | `scripts/08_evaluate.py --dataset pix3d --run <training run> --photos val` | available (the test parts need `--allow-test`) |

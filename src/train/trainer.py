@@ -108,7 +108,11 @@ def training_gallery(galleries: dict[str, Gallery], mesh_ids: set[str]) -> Galle
 
 def load_val_sets(datasets: list[str], split: str, backbone: str, recipe: str, galleries: dict[str, Gallery],
                   category_index: dict[str, int], zero_shot_cfg: dict, features_root, device) -> list[ValSet]:
-    """Return the val photos of every query set of every dataset, as stored features."""
+    """Return the val photos of every query set of every dataset, as stored features.
+
+    A query set without val photos is left out (in a joint fold by category, ABO has no photos of
+    the Pix3D category "misc").
+    """
     sets = []
     for dataset in datasets:
         wanted = load_split(paths.split_file(dataset, split))["parts"]["val"]
@@ -116,7 +120,10 @@ def load_val_sets(datasets: list[str], split: str, backbone: str, recipe: str, g
         for query_set in QUERY_SETS[dataset]:
             table = read_features(paths.features_file(backbone, dataset, query_set, features_root))
             present = set(table.ids.tolist())
-            table = table.select([q for q in wanted if q in present])
+            selected = [q for q in wanted if q in present]
+            if not selected:
+                continue
+            table = table.select(selected)
             vectors = table.vectors(recipe)
             targets = gallery_targets(table.labels["mesh_id"].tolist(), gallery.mesh_ids)
             raw = score_meshes(vectors, gallery.views.float().cpu().numpy(), zero_shot_cfg["scoring"], zero_shot_cfg["alpha"])

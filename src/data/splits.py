@@ -59,6 +59,24 @@ uses each non-test category once as the val part ("unseen_categories_fold<k>": v
 category k, train = the photos of the other non-test categories, test = the unchanged test part),
 so every non-test photo is validated by a model that never saw its category.
 
+Joint training of several datasets by category. The folds of the first dataset (Pix3D) decide the
+folds: another dataset (ABO) gets one fold per category of the first one, with the same order and
+numbers. Its val part is its photos of that category (empty if it has none, for example ABO has no
+"misc"), and its other non-test photos are its train part. Then the model of fold k has seen the
+held-out category in no dataset.
+
+Near relatives ("relatives" in `data.splits.unseen_categories`). A category that is nearly the same
+object as a held-out one (ABO shelf for Pix3D bookcase, ABO stool for chair) also teaches the
+held-out category. So every unseen_categories training leaves out the photos of the near relatives
+of its held-out categories, in every dataset (`left_out_categories`); the held-out categories are
+the test categories of each dataset and, in a fold, the category of the fold:
+
+    test part:         bookcase, wardrobe (Pix3D)  →  also out: shelf, tv_stand, cabinet, dresser (ABO)
+    fold "chair":      chair (Pix3D and ABO)       →  also out: stool, bench, bean_bag (ABO)
+
+The split files stay unchanged; the training reads the rule from the settings. A training of Pix3D
+alone loses nothing: no Pix3D category is a near relative of another one in the settings.
+
 Every split is repeatable: it depends only on the input rows and a seed. Split files are small
 JSON files in `data/splits/<dataset>/` and are tracked in git, so that every run uses the same
 split. A split works for any dataset: it needs only the query id, the category, and the mesh id
@@ -283,7 +301,7 @@ def mesh_folds(base: dict, queries: list[dict], folds: int, seed: int = 42) -> l
     return made
 
 
-def category_folds(base: dict, queries: list[dict], seed: int = 42) -> list[dict]:
+def category_folds(base: dict, queries: list[dict], seed: int = 42, categories: list[str] | None = None) -> list[dict]:
     """One fold per non-test category of a split (leave-one-category-out); return one split per fold.
 
     Args:
@@ -291,8 +309,11 @@ def category_folds(base: dict, queries: list[dict], seed: int = 42) -> list[dict
             test part stays the test part of every fold.
         queries: Catalog rows (query_id, category, mesh_id) of every photo of the split.
         seed: Kept in the split record (the folds themselves are not random).
+        categories: The categories of the folds, in fold order (None = the non-test categories of
+            this split, sorted). A joint training gives the categories of its first dataset; a
+            category without photos here gets an empty val part.
 
-    Fold k holds the k-th category in sorted order.
+    Fold k holds the k-th category.
 
     Raises:
         ValueError: If a category has photos in the test part and outside it, or if the rows do not
@@ -306,7 +327,9 @@ def category_folds(base: dict, queries: list[dict], seed: int = 42) -> list[dict
     shared = {row["category"] for row in rows} & {row["category"] for row in queries if row["query_id"] in test}
     if shared:
         raise ValueError(f"the categories {sorted(shared)} have photos in the test part and outside it; folds by category need a split by category")
-    categories = sorted({row["category"] for row in rows})
+    own = sorted({row["category"] for row in rows})
+    led = categories is not None
+    categories = list(categories) if led else own
     made = []
     for k, category in enumerate(categories):
         val = [row["query_id"] for row in rows if row["category"] == category]
@@ -314,12 +337,25 @@ def category_folds(base: dict, queries: list[dict], seed: int = 42) -> list[dict
         split = _make_split(
             fold_name(base["name"], k + 1),
             f"Fold {k + 1} of {len(categories)} of {base['name']!r} (leave one category out): val = every photo of the category "
-            f"{category!r}, train = the photos of the other non-test categories, test = the test part of {base['name']!r}.",
+            f"{category!r}, train = the photos of the other non-test categories, test = the test part of {base['name']!r}."
+            + (" The folds follow the categories of the first dataset of a joint training." if led and categories != own else ""),
             seed, train, val, base["parts"]["test"],
         )
         split.update({"base_split": base["name"], "fold": k + 1, "folds": len(categories), "held_out_category": category})
         made.append(split)
     return made
+
+
+def left_out_categories(held_out: set[str], relatives: dict[str, list[str]] | None) -> set[str]:
+    """Return the categories that an unseen_categories training leaves out: the held-out ones and their near relatives.
+
+    Args:
+        held_out: The held-out categories of the training (the test categories of each dataset and,
+            in a fold, the category of the fold).
+        relatives: `data.splits.unseen_categories.relatives`: category -> its near relatives.
+    """
+    relatives = relatives or {}
+    return set(held_out) | {r for category in held_out for r in relatives.get(category, [])}
 
 
 def save_split(split: dict, path: Path) -> Path:

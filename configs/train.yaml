@@ -5,6 +5,9 @@ train:
   batch_size: 64                     # query images per step; every mesh of the training gallery is a negative in each step
   epochs: 5                          # a short training: longer ones learn the training meshes and lose on new meshes
                                      # (5-fold cross-validation by mesh: 10 epochs worse than 5; 30 epochs worse still)
+  final_epoch: last                  # the epoch of the final model: last, or best (the best mean val R@1); a cross-validation
+                                     # reports its pooled result at this epoch (last: the curve is flat, and a final
+                                     # training on all non-test photos has no val part to choose an epoch)
   optimizer: {name: adamw, lr: 3.0e-4, weight_decay: 1.0e-4}   # lr 3e-4: the trained score on new meshes is flat over the epochs
   schedule: {name: cosine, warmup_epochs: 1}   # learning rate rises for 1 epoch, then falls along a cosine curve
   heads:

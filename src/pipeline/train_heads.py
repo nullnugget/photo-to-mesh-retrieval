@@ -4,7 +4,8 @@ Steps:
 
 1. the training photos of the split's train part (`src/data/datasets.py`), the training gallery
    (the meshes of these photos), and the full gallery and the val photos of each dataset (stored
-   features, `src/train/trainer.py`);
+   features, `src/train/trainer.py`); an unseen_categories training leaves out the photos of its
+   held-out categories and their near relatives in every dataset (`data.splits.unseen_categories.relatives`);
 2. the frozen backbone for the changed training images, the heads, AdamW, and the learning-rate
    schedule (warm-up, then cosine);
 3. for each epoch: one pass over the training photos, then the validation; the heads of the epoch
@@ -38,6 +39,7 @@ from src import paths, runs
 from src.data.augment import QueryAugment
 from src.data.catalog import read_table
 from src.data.datasets import TrainingQueries, loader_worker_init, training_photos
+from src.data.splits import left_out_categories, load_split
 from src.models.backbones import FeatureExtractor
 from src.models.embedding_heads import EmbeddingHeads, parameter_counts
 from src.pipeline.extract_features import output_root as features_output_root
@@ -71,6 +73,24 @@ def _write_val_ranks(path: Path, val_sets: list, epoch_ranks: dict[str, list[np.
     partial.replace(path)
 
 
+def held_out_categories(datasets: list[str], split: str) -> set[str]:
+    """The held-out categories of an unseen_categories training (empty for the other splits).
+
+    They are the categories of the test part of each dataset's split file and, in a fold of a
+    cross-validation by category, the category of the fold (`held_out_category`).
+    """
+    if (split.rpartition("_fold")[0] or split) != "unseen_categories":  # "unseen_categories_fold3" -> "unseen_categories"
+        return set()
+    rows = {row["query_id"]: row["category"] for row in read_table(paths.QUERIES_CSV)}
+    held = set()
+    for dataset in datasets:
+        split_dict = load_split(paths.split_file(dataset, split))
+        held |= {rows[q] for q in split_dict["parts"]["test"]}
+        if split_dict.get("held_out_category"):
+            held.add(split_dict["held_out_category"])
+    return held
+
+
 def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None, backbone: str | None = None,
         tag: str | None = None, mini: bool = False, device: str = "cuda") -> dict:
     """Train the heads on one split; return the content of metrics.json.
@@ -95,7 +115,9 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
 
     # 1. Photos, galleries, val sets.
     category_index = {c: i for i, c in enumerate(sorted({q["category"] for q in read_table(paths.QUERIES_CSV)}))}
-    photos, photo_report = training_photos(datasets, split, "train", train_cfg["query_images"])
+    relatives = data_cfg["splits"].get("unseen_categories", {}).get("relatives")
+    leave_out = left_out_categories(held_out_categories(datasets, split), relatives)
+    photos, photo_report = training_photos(datasets, split, "train", train_cfg["query_images"], leave_out)
     if mini:
         keep = np.random.default_rng(train_cfg["seed"]).choice(len(photos), size=max(1, int(len(photos) * train_cfg["mini_fraction"])), replace=False)
         photos = [photos[i] for i in sorted(keep)]
@@ -125,6 +147,9 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
     run = runs.create_run(cfg, label, backbone, "_".join(p for p in (split, tag) if p), runs_dir=out["runs"], checkpoints_dir=out["checkpoints"])
     print(f"run {run['run_name']}: {len(photos)} training photos, training gallery {len(gallery.mesh_ids)} meshes, "
           f"{len(loader)} steps per epoch, {epochs} epochs; heads {parameter_counts(heads)['total']:,} parameters", flush=True)
+    if photo_report["left_out_categories"]:
+        print("left out of training (held-out categories and near relatives): "
+              + ", ".join(f"{k} {v}" for k, v in photo_report["left_out_categories"].items()), flush=True)
     print("zero-shot val R@1: " + ", ".join(f"{v.name} {100 * v.zero_shot_r1:.1f}" for v in val_sets), flush=True)
 
     # 3. Epochs.
@@ -175,6 +200,8 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
         "training_photos": len(photos),
         "training_images": photo_report["images"],
         "training_gallery_meshes": len(gallery.mesh_ids),
+        "left_out_categories": sorted(leave_out),
+        "left_out_photos": photo_report["left_out_categories"],
         "epochs": epochs,
         "best_epoch": best["epoch"],
         "best_selection_R@1": best["value"],

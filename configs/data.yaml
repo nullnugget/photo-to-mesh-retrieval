@@ -20,6 +20,16 @@ data:
       held_out:
         pix3d: [bookcase, wardrobe]
         abo: [lamp, planter, vase, ceiling_light]
+      # Near relatives: categories that are nearly the same object as a held-out category. Every
+      # unseen_categories training (also each fold of its cross-validation) leaves out the photos
+      # of the relatives of its held-out categories, in every dataset; otherwise the model would
+      # learn the held-out category through them (src/data/splits.py, left_out_categories).
+      relatives:
+        bookcase: [shelf, tv_stand]   # ABO shelves; ABO TV stands are low cabinets and open shelves
+        wardrobe: [cabinet, dresser]  # closed boxes with doors or drawers
+        chair: [stool, bench, bean_bag]
+        sofa: [ottoman, bench]
+        table: [cart]                 # ABO carts are kitchen islands and bar carts
 
   pix3d:
     v1_test_part: true               # seen_meshes: use the v1 evaluation photos as the test part (comparable with v1)

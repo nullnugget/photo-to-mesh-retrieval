@@ -13,6 +13,11 @@ Cross-validation (--folds): one training per fold of the split's non-test meshes
 settings and tag), then the pooled validation over all non-test meshes (`src/pipeline/cross_validate.py`).
 --folds all trains every fold; --folds 3 4 5 continues a stopped cross-validation.
 
+Joint training (--datasets pix3d abo): one training gallery of both datasets (every training photo
+against every training mesh of both); the val photos of each dataset are searched in the gallery of
+their own dataset. An unseen_categories training leaves out the near relatives of its held-out
+categories (`data.splits.unseen_categories.relatives`).
+
 The logic is in `src/pipeline/train_heads.py` and `src/train/trainer.py`.
 
 Usage (from the repository root):
@@ -22,6 +27,7 @@ Usage (from the repository root):
     python scripts/06_train.py --split seen_meshes --set train.loss.temperature=0.05 --tag tau005
     python scripts/06_train.py --split unseen_meshes --folds all --tag cvbase       # 5 trainings, then the pooled result
     python scripts/06_train.py --split unseen_categories --folds all --tag cvcat     # one training per category, then the pooled result
+    python scripts/06_train.py --split unseen_meshes --datasets pix3d abo --folds all --tag cvjoint   # joint: Pix3D folds + ABO folds
 """
 
 import argparse

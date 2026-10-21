@@ -9,7 +9,8 @@ import random
 import pytest
 
 from src import paths
-from src.data.splits import category_folds, mesh_folds, seen_meshes_split, unseen_categories_split, unseen_meshes_split
+from src.data.splits import (category_folds, left_out_categories, mesh_folds, seen_meshes_split, unseen_categories_split,
+                              unseen_meshes_split)
 
 
 def _synthetic_queries():
@@ -141,3 +142,48 @@ def test_category_folds_leave_one_category_out():
         assert fold["held_out_category"] not in {category_of[q] for q in fold["parts"]["train"]}
     with pytest.raises(ValueError, match="by category"):
         category_folds(unseen_meshes_split(queries, seed=1), queries)
+
+
+def test_category_folds_can_follow_the_categories_of_another_dataset():
+    # A joint training: the folds of the first dataset are (bed, chair); this dataset has no bed.
+    queries = _synthetic_queries()
+    base = unseen_categories_split(queries, held_out=["table"], seed=1)
+    folds = category_folds(base, queries, categories=["bed", "chair"])
+    category_of = {q["query_id"]: q["category"] for q in queries}
+    assert [f["held_out_category"] for f in folds] == ["bed", "chair"]
+    assert folds[0]["parts"]["val"] == []  # no photo of the category: an empty val part, all in train
+    assert {category_of[q] for q in folds[0]["parts"]["train"]} == {"chair", "sofa"}
+    assert {category_of[q] for q in folds[1]["parts"]["val"]} == {"chair"}
+    for fold in folds:
+        _assert_partition(fold, queries)
+
+
+def test_left_out_categories_add_the_near_relatives():
+    relatives = {"bookcase": ["shelf", "tv_stand"], "chair": ["stool", "bench"], "sofa": ["ottoman", "bench"]}
+    assert left_out_categories({"bookcase", "chair"}, relatives) == {"bookcase", "shelf", "tv_stand", "chair", "stool", "bench"}
+    assert left_out_categories({"bed"}, relatives) == {"bed"}  # no relatives
+    assert left_out_categories(set(), relatives) == set()
+    assert left_out_categories({"chair"}, None) == {"chair"}
+
+
+@pytest.mark.data
+def test_an_unseen_categories_training_leaves_out_the_near_relatives():
+    from src.config import load_config
+    from src.data.datasets import training_photos
+    from src.pipeline.train_heads import held_out_categories
+
+    assert held_out_categories(["pix3d"], "unseen_categories") == {"bookcase", "wardrobe"}
+    assert held_out_categories(["pix3d"], "unseen_categories_fold2") == {"bookcase", "wardrobe", "chair"}
+    assert held_out_categories(["pix3d"], "seen_meshes") == set()
+    held = held_out_categories(["pix3d", "abo"], "unseen_categories")
+    assert held == {"bookcase", "wardrobe", "lamp", "ceiling_light", "planter", "vase"}
+    cfg = load_config()
+    leave_out = left_out_categories(held, cfg["data"]["splits"]["unseen_categories"]["relatives"])
+    assert {"shelf", "tv_stand", "cabinet", "dresser"} <= leave_out
+    photos, report = training_photos(["pix3d", "abo"], "unseen_categories", "train", cfg["train"]["query_images"], leave_out)
+    assert not {p.category for p in photos} & leave_out
+    assert set(report["left_out_categories"]) == {"abo/shelf", "abo/tv_stand", "abo/cabinet", "abo/dresser"}
+    # Pix3D alone loses nothing: no Pix3D category is a near relative.
+    pix3d_only, _ = training_photos(["pix3d"], "unseen_categories", "train", cfg["train"]["query_images"], leave_out)
+    unchanged, _ = training_photos(["pix3d"], "unseen_categories", "train", cfg["train"]["query_images"])
+    assert len(pix3d_only) == len(unchanged)

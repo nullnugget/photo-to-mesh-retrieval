@@ -12,14 +12,21 @@ from src.train.trainer import RECORDED_MIX_WEIGHTS
 CONFIG = {"train": {"scoring": {"mix_weight": 0.5}}, "backbone": {"feature_recipe": "cls"}}
 
 
-def _fold_run(root, k, ranks, query_ids, mesh_ids, config=CONFIG):
-    """A run folder as `06_train.py` writes it: metrics.json, config.yaml, val_ranks.npz (ranks: epochs, W, Q)."""
+def _fold_run(root, k, ranks, query_ids, mesh_ids, config=CONFIG, extra_sets=None):
+    """A run folder as `06_train.py` writes it: metrics.json, config.yaml, val_ranks.npz (ranks: epochs, W, Q).
+
+    extra_sets: {query set: (ranks, query_ids, mesh_ids)} recorded next to "toy_sam".
+    """
     run_dir = root / f"2026-10-20_toy_bb_unseen_meshes_fold{k}_cv"
     run_dir.mkdir(parents=True)
-    (run_dir / "metrics.json").write_text(json.dumps({"run_name": run_dir.name, "split": f"unseen_meshes_fold{k}"}))
+    (run_dir / "metrics.json").write_text(json.dumps({"run_name": run_dir.name, "split": f"unseen_meshes_fold{k}", "best_epoch": 1,
+                                                      "mix_weight": config["train"]["scoring"]["mix_weight"]}))
     (run_dir / "config.yaml").write_text(yaml.safe_dump(config))
-    np.savez(run_dir / "val_ranks.npz", mix_weights=np.array(RECORDED_MIX_WEIGHTS), toy_sam__ranks=np.asarray(ranks, dtype=np.int16),
-             toy_sam__query_ids=np.array(query_ids), toy_sam__mesh_ids=np.array(mesh_ids), toy_sam__categories=np.array(["chair"] * len(query_ids)))
+    arrays = {}
+    for name, (r, q, m) in {"toy_sam": (ranks, query_ids, mesh_ids), **(extra_sets or {})}.items():
+        arrays.update({f"{name}__ranks": np.asarray(r, dtype=np.int16), f"{name}__query_ids": np.array(q),
+                       f"{name}__mesh_ids": np.array(m), f"{name}__categories": np.array(["chair"] * len(q))})
+    np.savez(run_dir / "val_ranks.npz", mix_weights=np.array(RECORDED_MIX_WEIGHTS), **arrays)
     return run_dir
 
 
@@ -76,3 +83,42 @@ def test_a_stopped_fold_run_is_not_found(tmp_path):
     stopped.mkdir()
     (stopped / "val_ranks.npz").write_bytes((finished / "val_ranks.npz").read_bytes())  # no metrics.json: stopped
     assert cross_validation.find_fold_runs("toy", "bb", "unseen_meshes", 1, "cv", tmp_path) == [finished]
+
+
+def test_the_epoch_rule_last_takes_the_last_epoch(tmp_path):
+    r = _ranks(3, {0.0: [2], 0.5: [2]})
+    r[1, RECORDED_MIX_WEIGHTS.index(0.5)] = [1]  # epoch 2 is the best
+    run = _fold_run(tmp_path, 1, r, ["q1"], ["a"])
+    best = cross_validation.pool([run], "unseen_meshes")  # no train.final_epoch in the settings: "best"
+    assert best["epoch_rule"] == "best" and best["selected_epoch"] == 2
+    last = cross_validation.pool([run], "unseen_meshes", "last")
+    assert last["selected_epoch"] == 3 and last["best_epoch_of_curve"] == 2 and last["selection_value"] == 0.0
+    run2 = _fold_run(tmp_path / "b", 1, r, ["q1"], ["a"], config={**CONFIG, "train": {**CONFIG["train"], "final_epoch": "last"}})
+    assert cross_validation.pool([run2], "unseen_meshes")["selected_epoch"] == 3  # the rule of the settings
+
+
+def test_the_pool_takes_a_query_set_from_the_folds_that_have_it(tmp_path):
+    # A joint fold by category: fold 2 has no photo of the second dataset ("abo_sam").
+    r = _ranks(1, {0.0: [1]})
+    a = _fold_run(tmp_path, 1, r, ["q1"], ["a"], extra_sets={"abo_sam": (r, ["x1"], ["m1"])})
+    b = _fold_run(tmp_path, 2, r, ["q2"], ["b"])
+    result = cross_validation.pool([a, b], "unseen_meshes")
+    assert result["pooled"]["toy_sam"]["query_ids"].tolist() == ["q1", "q2"]
+    assert result["pooled"]["abo_sam"]["query_ids"].tolist() == ["x1"] and result["pooled"]["abo_sam"]["fold"].tolist() == [1]
+
+
+def test_a_joint_and_a_single_training_compare_on_their_shared_query_sets(tmp_path):
+    # a: one dataset; b: the same val photos plus a second dataset's set. Only "toy_sam" is compared.
+    ra = _ranks(2, {0.0: [1, 2], 0.5: [1, 2]})
+    rb = _ranks(2, {0.0: [1, 2], 0.5: [1, 1]})
+    rb[0, RECORDED_MIX_WEIGHTS.index(0.5)] = [2, 2]  # b is worse at epoch 1, better at the last epoch
+    a = _fold_run(tmp_path / "a", 1, ra, ["q1", "q2"], ["m1", "m2"])
+    b = _fold_run(tmp_path / "b", 1, rb, ["q1", "q2"], ["m1", "m2"], extra_sets={"abo_sam": (ra, ["x1", "x2"], ["n1", "n2"])})
+    (weights_a, sets_a), (weights_b, sets_b) = cross_validation.run_ranks(a, "last"), cross_validation.run_ranks(b, "last")
+    assert sets_a["toy_sam"]["ranks"].shape == (len(RECORDED_MIX_WEIGHTS), 2)
+    result = cross_validation.compare_sets(sets_a, sets_b, weights_a, weights_b, 0.5, 0.5)
+    assert sorted(result) == ["all", "toy_sam"] and result["toy_sam"]["difference"] == 0.5
+    first = cross_validation.compare_sets(sets_a, cross_validation.run_ranks(b, 1)[1], weights_a, weights_b, 0.5, 0.5)
+    assert first["toy_sam"]["difference"] == -0.5
+    with pytest.raises(cross_validation.FoldMismatch, match="no shared"):
+        cross_validation.compare_sets(sets_a, {"abo_sam": sets_b["abo_sam"]}, weights_a, weights_b, 0.5, 0.5)

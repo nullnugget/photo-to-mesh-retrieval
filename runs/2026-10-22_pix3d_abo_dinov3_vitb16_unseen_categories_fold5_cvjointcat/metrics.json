@@ -1,0 +1,84 @@
+{
+  "run_name": "2026-10-22_pix3d_abo_dinov3_vitb16_unseen_categories_fold5_cvjointcat",
+  "split": "unseen_categories_fold5",
+  "datasets": [
+    "pix3d",
+    "abo"
+  ],
+  "backbone": "dinov3_vitb16",
+  "recipe": "cls",
+  "mix_weight": 0.75,
+  "temperature": 0.05,
+  "mini": false,
+  "training_photos": 18650,
+  "training_images": {
+    "pix3d_reference": 7516,
+    "pix3d_sam": 7516,
+    "abo_sam": 11134
+  },
+  "training_gallery_meshes": 2633,
+  "left_out_categories": [
+    "bench",
+    "bookcase",
+    "cabinet",
+    "ceiling_light",
+    "dresser",
+    "lamp",
+    "ottoman",
+    "planter",
+    "shelf",
+    "sofa",
+    "tv_stand",
+    "vase",
+    "wardrobe"
+  ],
+  "left_out_photos": {
+    "abo/bench": 162,
+    "abo/cabinet": 657,
+    "abo/dresser": 285,
+    "abo/ottoman": 1171,
+    "abo/shelf": 413,
+    "abo/tv_stand": 157
+  },
+  "epochs": 5,
+  "best_epoch": 3,
+  "best_selection_R@1": 0.45507432520389557,
+  "best_val": {
+    "pix3d_queries_reference": {
+      "photos": 1947,
+      "R@1": 0.5803800225257874,
+      "R@5": 0.9244992136955261,
+      "R@10": 0.9758602380752563,
+      "cat@1": 0.9573702812194824,
+      "trained_R@1": 0.5901386737823486,
+      "zero_shot_R@1": 0.4262968669748331
+    },
+    "pix3d_queries_sam": {
+      "photos": 1947,
+      "R@1": 0.5403184294700623,
+      "R@5": 0.8988186717033386,
+      "R@10": 0.968156099319458,
+      "cat@1": 0.9481253027915955,
+      "trained_R@1": 0.5480225682258606,
+      "zero_shot_R@1": 0.41448382126348227
+    },
+    "abo_queries_sam": {
+      "photos": 3607,
+      "R@1": 0.2445245236158371,
+      "R@5": 0.5830329656600952,
+      "R@10": 0.7136123776435852,
+      "cat@1": 0.8943720459938049,
+      "trained_R@1": 0.24424728751182556,
+      "zero_shot_R@1": 0.19295813695591904
+    }
+  },
+  "parameters": {
+    "query_projector": 787712,
+    "view_projector": 787712,
+    "view_aggregator": 98560,
+    "total": 1673984
+  },
+  "minutes": 9.5,
+  "git_commit": "1e571083ce6d124ede1e60c322930825cad48728",
+  "git_dirty": true
+}

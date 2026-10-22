@@ -1,0 +1,80 @@
+{
+  "run_name": "2026-10-22_pix3d_abo_dinov3_vitb16_unseen_categories_fold1_cvjointcat",
+  "split": "unseen_categories_fold1",
+  "datasets": [
+    "pix3d",
+    "abo"
+  ],
+  "backbone": "dinov3_vitb16",
+  "recipe": "cls",
+  "mix_weight": 0.75,
+  "temperature": 0.05,
+  "mini": false,
+  "training_photos": 24070,
+  "training_images": {
+    "pix3d_reference": 8469,
+    "pix3d_sam": 8469,
+    "abo_sam": 15601
+  },
+  "training_gallery_meshes": 3500,
+  "left_out_categories": [
+    "bed",
+    "bookcase",
+    "cabinet",
+    "ceiling_light",
+    "dresser",
+    "lamp",
+    "planter",
+    "shelf",
+    "tv_stand",
+    "vase",
+    "wardrobe"
+  ],
+  "left_out_photos": {
+    "abo/cabinet": 657,
+    "abo/dresser": 285,
+    "abo/shelf": 413,
+    "abo/tv_stand": 157
+  },
+  "epochs": 5,
+  "best_epoch": 1,
+  "best_selection_R@1": 0.4976780911286672,
+  "best_val": {
+    "pix3d_queries_reference": {
+      "photos": 994,
+      "R@1": 0.6670019626617432,
+      "R@5": 0.9134808778762817,
+      "R@10": 0.9698188900947571,
+      "cat@1": 0.9426559209823608,
+      "trained_R@1": 0.6267605423927307,
+      "zero_shot_R@1": 0.6730382293762576
+    },
+    "pix3d_queries_sam": {
+      "photos": 994,
+      "R@1": 0.5744466781616211,
+      "R@5": 0.8631790280342102,
+      "R@10": 0.9325955510139465,
+      "cat@1": 0.8913480639457703,
+      "trained_R@1": 0.5714285373687744,
+      "zero_shot_R@1": 0.596579476861167
+    },
+    "abo_queries_sam": {
+      "photos": 473,
+      "R@1": 0.25158563256263733,
+      "R@5": 0.45454543828964233,
+      "R@10": 0.5729386806488037,
+      "cat@1": 0.8773784041404724,
+      "trained_R@1": 0.25581395626068115,
+      "zero_shot_R@1": 0.24735729386892177
+    }
+  },
+  "parameters": {
+    "query_projector": 787712,
+    "view_projector": 787712,
+    "view_aggregator": 98560,
+    "total": 1673984
+  },
+  "minutes": 13.1,
+  "git_commit": "87ba2c00cac7bc94a99f1a44ac1ee62a9c4ff92a",
+  "git_dirty": true
+}

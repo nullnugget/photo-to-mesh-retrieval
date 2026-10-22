@@ -1,0 +1,86 @@
+{
+  "run_name": "2026-10-22_pix3d_abo_dinov3_vitb16_unseen_categories_fold2_cvjointcat_2",
+  "split": "unseen_categories_fold2",
+  "datasets": [
+    "pix3d",
+    "abo"
+  ],
+  "backbone": "dinov3_vitb16",
+  "recipe": "cls",
+  "mix_weight": 0.75,
+  "temperature": 0.05,
+  "mini": false,
+  "training_photos": 14747,
+  "training_images": {
+    "pix3d_reference": 5624,
+    "pix3d_sam": 5624,
+    "abo_sam": 9123
+  },
+  "training_gallery_meshes": 2082,
+  "left_out_categories": [
+    "bean_bag",
+    "bench",
+    "bookcase",
+    "cabinet",
+    "ceiling_light",
+    "chair",
+    "dresser",
+    "lamp",
+    "planter",
+    "shelf",
+    "stool",
+    "tv_stand",
+    "vase",
+    "wardrobe"
+  ],
+  "left_out_photos": {
+    "abo/bean_bag": 30,
+    "abo/bench": 162,
+    "abo/cabinet": 657,
+    "abo/dresser": 285,
+    "abo/shelf": 413,
+    "abo/stool": 1475,
+    "abo/tv_stand": 157
+  },
+  "epochs": 5,
+  "best_epoch": 2,
+  "best_selection_R@1": 0.6882833540439606,
+  "best_val": {
+    "pix3d_queries_reference": {
+      "photos": 3839,
+      "R@1": 0.8913779258728027,
+      "R@5": 0.9869757294654846,
+      "R@10": 0.9945297837257385,
+      "cat@1": 0.992966890335083,
+      "trained_R@1": 0.8791351318359375,
+      "zero_shot_R@1": 0.8379786402709039
+    },
+    "pix3d_queries_sam": {
+      "photos": 3839,
+      "R@1": 0.8142745494842529,
+      "R@5": 0.9687418341636658,
+      "R@10": 0.984631359577179,
+      "cat@1": 0.9848918914794922,
+      "trained_R@1": 0.8004688620567322,
+      "zero_shot_R@1": 0.7061734826777807
+    },
+    "abo_queries_sam": {
+      "photos": 5284,
+      "R@1": 0.35919758677482605,
+      "R@5": 0.79466313123703,
+      "R@10": 0.8820968866348267,
+      "cat@1": 0.9392505884170532,
+      "trained_R@1": 0.3514383137226105,
+      "zero_shot_R@1": 0.32191521574564724
+    }
+  },
+  "parameters": {
+    "query_projector": 787712,
+    "view_projector": 787712,
+    "view_aggregator": 98560,
+    "total": 1673984
+  },
+  "minutes": 7.1,
+  "git_commit": "1e571083ce6d124ede1e60c322930825cad48728",
+  "git_dirty": true
+}

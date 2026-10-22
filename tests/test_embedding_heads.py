@@ -114,3 +114,16 @@ def test_the_designs_train_different_parts():
     assert EmbeddingHeads.from_config({"hidden_dim": 512, "embedding_dim": 256, "aggregator": "attention", "attention_dim": 128}, 768).design == "projection"
     with pytest.raises(ValueError):
         EmbeddingHeads(768, design="other")
+
+
+def test_scores_in_blocks_equal_one_block_and_keep_the_gradient():
+    g = torch.Generator().manual_seed(0)
+    q = torch.nn.functional.normalize(torch.randn(10, 8, generator=g), dim=-1).requires_grad_()
+    views = torch.nn.functional.normalize(torch.randn(6, 25, 8, generator=g), dim=-1)
+    meshes = torch.nn.functional.normalize(torch.randn(6, 8, generator=g), dim=-1)
+    whole = scores(q, views, meshes, 0.5, chunk=100)
+    blocks = scores(q, views, meshes, 0.5, chunk=3)  # blocks of 3, 3, 3, 1 queries
+    assert torch.allclose(whole, blocks)
+    blocks.sum().backward()
+    assert q.grad is not None and q.grad.abs().sum() > 0
+    assert scores(q[:0], views, meshes, 0.5).shape == (0, 6)

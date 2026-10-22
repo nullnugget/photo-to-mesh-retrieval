@@ -200,7 +200,11 @@ def parameter_counts(heads: EmbeddingHeads) -> dict[str, int]:
     return counts
 
 
-def scores(queries: torch.Tensor, views: torch.Tensor, meshes: torch.Tensor, alpha: float) -> torch.Tensor:
+SCORE_CHUNK = 1024  # queries per block in `scores`
+
+
+def scores(queries: torch.Tensor, views: torch.Tensor, meshes: torch.Tensor, alpha: float,
+           chunk: int = SCORE_CHUNK) -> torch.Tensor:
     """Combined score of every mesh for every query: (queries, meshes).
 
     Args:
@@ -208,9 +212,14 @@ def scores(queries: torch.Tensor, views: torch.Tensor, meshes: torch.Tensor, alp
         views: View embeddings (M, V, D), unit length. All views count for the view score.
         meshes: Mesh embeddings (M, D), unit length.
         alpha: Weight of the view score (1.0 = view score only, 0.0 = mesh score only).
+        chunk: Queries per block. The view score needs a (queries, meshes, views) block before
+            its maximum: 5,284 queries × 4,393 meshes × 25 views × 4 bytes = 2.2 GB, too much for a
+            6 GB GPU next to the training. Each row is calculated alone, so the blocks give the
+            same result; a training batch (64 queries) is one block.
     """
-    view_score = torch.einsum("qd,mvd->qmv", queries, views).amax(dim=2)  # best view of each mesh (hard maximum)
     mesh_score = queries @ meshes.T
+    view_score = torch.cat([torch.einsum("qd,mvd->qmv", queries[i:i + chunk], views).amax(dim=2)  # best view (hard maximum)
+                            for i in range(0, len(queries), chunk)]) if len(queries) else mesh_score
     return alpha * view_score + (1.0 - alpha) * mesh_score
 
 

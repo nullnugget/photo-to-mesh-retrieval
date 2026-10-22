@@ -164,9 +164,13 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
         for name, value in ranks.items():
             epoch_ranks[name].append(value)
         value = trainer.selection_value(results)
+        # GPU memory that PyTorch really used in this epoch (training and validation), not what it keeps in reserve.
+        gpu_peak = round(torch.cuda.max_memory_allocated() / 2**30, 2) if torch.cuda.is_available() else 0.0
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
         row = {"epoch": epoch, "lr": round(scheduler.get_last_lr()[0], 7),
                **{k: round(v, 4) if isinstance(v, float) else v for k, v in train_values.items()},
-               "selection_R@1": round(value, 4), **_flatten("val_", results)}
+               "gpu_peak_gib": gpu_peak, "selection_R@1": round(value, 4), **_flatten("val_", results)}
         log_rows.append(row)
         heads_state = {name: getattr(heads, name).state_dict() for name in HEAD_NAMES}
         if value > best["value"]:
@@ -176,7 +180,7 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
         print(f"epoch {epoch:3d}/{epochs}  loss {row['loss']:.4f} (instance {row['instance']:.4f}, category {row['category']:.4f})  "
               f"batch R@1 {100 * row['batch_R@1']:5.1f}  val R@1 " + ", ".join(f"{n} {100 * r['R@1']:.1f}" for n, r in results.items())
               + " (trained alone " + ", ".join(f"{100 * r['trained_R@1']:.1f}" for r in results.values()) + ")"
-              + f"  | {row['images_per_second']} images/s, loader wait {100 * row['loader_wait_share']:.0f} %"
+              + f"  | {row['images_per_second']} images/s, loader wait {100 * row['loader_wait_share']:.0f} %, GPU peak {gpu_peak} GiB"
               + ("  *best" if best["epoch"] == epoch else ""), flush=True)  # flush: show the line at once, also through a pipe
         with open(run["run_dir"] / "train_log.csv", "w", newline="") as f:  # rewritten each epoch, so a stopped run keeps its log
             writer = csv.DictWriter(f, fieldnames=list(log_rows[0]))

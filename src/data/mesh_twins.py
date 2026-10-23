@@ -27,6 +27,15 @@ part that is judged, so it must not also be the judge. Two stages, because the e
    points. So has triangle to point, the second half of `pytorch3d.loss.point_mesh_face_distance`:
    it depends on how densely the points cover each triangle.)
 
+   The distance to a triangle is calculated here with the closest-point method of Ericson
+   ("Real-Time Collision Detection", 5.1.5): the point's closest place on the triangle is a corner,
+   a point on an edge, or a point inside, decided by dot products. Why not
+   `pytorch3d.loss.point_mesh_distance.point_face_distance`: with a small `min_triangle_area` it
+   returned values about 100 times too small for a closed cabinet against an open shelf (points on a
+   side panel got distance about 0 from the coplanar faces of thin corner posts), and with its
+   default (0.005) it measures to the edges of every smaller triangle, which overstates the
+   distance. A test compares this method with a dense brute-force sample.
+
 The size is not in the geometry test (the unit sphere hides it): a 30-inch and a 40-inch version of
 one design pass both stages. The listing dimensions separate them (a later step).
 """
@@ -35,8 +44,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from pytorch3d.loss.point_mesh_distance import point_face_distance
-from pytorch3d.ops import sample_points_from_meshes
+from pytorch3d.ops import knn_points, sample_points_from_meshes
 from pytorch3d.structures import Meshes
 
 from src.render.mesh_io import load_mesh
@@ -44,7 +52,8 @@ from src.render.normalize import normalize_to_unit_sphere
 
 GRID_CELLS = 32  # cells per side of the occupancy grid
 GRID_POINTS = 50_000  # surface points per grid: enough to mark every surface cell
-DISTANCE_POINTS = 5_000  # surface points per side of the exact test (cost: points × triangles; 2,000 to 20,000 give the same values ± 0.0001)
+DISTANCE_POINTS = 2_000  # surface points per side of the exact test (cost: points × triangles; no sampling floor, so few points suffice)
+BOUND_POINTS = 50_000  # dense surface sample of the fast upper bound (`distance_bound`)
 
 
 def unit_mesh(path: str | Path, device: str | torch.device = "cpu") -> Meshes:
@@ -123,14 +132,79 @@ def grid_iou(grids_a: np.ndarray, grids_b: np.ndarray | None = None, device: str
     return out
 
 
-MIN_TRIANGLE_AREA = 1e-10  # pytorch3d measures to the edges of smaller triangles (its default 0.005 is coarse for unit-sphere meshes)
+POINT_TRIANGLE_BLOCK = 2**23  # point × triangle pairs per block in `point_to_surface`: about 1.2 GiB of GPU memory; 2**25 needs 4.3 GiB at the same speed
+
+
+def point_triangle_sq_distance(p: torch.Tensor, a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+    """Squared distance of each point to each triangle: p (P, 3); a, b, c (T, 3) corners → (P, T).
+
+    The closest place on a triangle is found by the regions of Ericson's method (corner a, b, c;
+    edge ab, ac, bc; or inside). A zero-area triangle falls into a corner or edge region.
+    """
+    p = p[:, None, :]
+    ab, ac = (b - a)[None], (c - a)[None]
+    ap, bp, cp = p - a[None], p - b[None], p - c[None]
+    d1, d2 = (ab * ap).sum(-1), (ac * ap).sum(-1)
+    d3, d4 = (ab * bp).sum(-1), (ac * bp).sum(-1)
+    d5, d6 = (ab * cp).sum(-1), (ac * cp).sum(-1)
+    va, vb, vc = d3 * d6 - d5 * d4, d5 * d2 - d1 * d6, d1 * d4 - d3 * d2
+    tiny = torch.finfo(p.dtype).tiny
+
+    # Inside: barycentric coordinates (the default; the region tests below replace it where they apply).
+    denom = (va + vb + vc).clamp(min=tiny)
+    v, w = vb / denom, vc / denom
+    closest = a[None] + ab * v[..., None] + ac * w[..., None]
+
+    def put(mask, point):
+        nonlocal closest
+        closest = torch.where(mask[..., None], point, closest)
+
+    # Ericson tests in this order: corner a, corner b, edge ab, corner c, edge ac, edge bc, inside; the
+    # first test that applies wins. Here the tests are applied in the reverse order, each one over the
+    # result of the ones before, so that the earlier test of Ericson's order has the last word.
+    t = (d4 - d3) / ((d4 - d3) + (d5 - d6)).clamp(min=tiny)
+    put((va <= 0) & (d4 - d3 >= 0) & (d5 - d6 >= 0), b[None] + (c - b)[None] * t[..., None])  # edge bc
+    t = d2 / (d2 - d6).clamp(min=tiny)
+    put((vb <= 0) & (d2 >= 0) & (d6 <= 0), a[None] + ac * t[..., None])  # edge ac
+    put((d6 >= 0) & (d5 <= d6), c[None].expand_as(closest))  # corner c
+    t = d1 / (d1 - d3).clamp(min=tiny)
+    put((vc <= 0) & (d1 >= 0) & (d3 <= 0), a[None] + ab * t[..., None])  # edge ab
+    put((d3 >= 0) & (d4 <= d3), b[None].expand_as(closest))  # corner b
+    put((d1 <= 0) & (d2 <= 0), a[None].expand_as(closest))  # corner a
+    return ((p - closest) ** 2).sum(-1)
 
 
 def point_to_surface(points: torch.Tensor, mesh: Meshes) -> torch.Tensor:
-    """Squared distance of each point (P, 3) to the nearest triangle of a single mesh: (P,)."""
+    """Squared distance of each point (P, 3) to the nearest triangle of a single mesh: (P,).
+
+    Points and triangles are processed in blocks of about POINT_TRIANGLE_BLOCK pairs.
+    """
     tris = mesh.verts_packed()[mesh.faces_packed()]  # (T, 3, 3)
-    zero = torch.zeros(1, dtype=torch.int64, device=points.device)
-    return point_face_distance(points, zero, tris, zero, len(points), MIN_TRIANGLE_AREA)
+    a, b, c = tris[:, 0], tris[:, 1], tris[:, 2]
+    rows = max(1, POINT_TRIANGLE_BLOCK // max(1, len(tris)))
+    cols = max(1, POINT_TRIANGLE_BLOCK // rows)
+    best = torch.full((len(points),), float("inf"), device=points.device)
+    for i in range(0, len(points), rows):
+        for j in range(0, len(tris), cols):
+            d = point_triangle_sq_distance(points[i:i + rows], a[j:j + cols], b[j:j + cols], c[j:j + cols])
+            best[i:i + rows] = torch.minimum(best[i:i + rows], d.min(dim=1).values)
+    return best
+
+
+def distance_bound(points_a: torch.Tensor, points_b: torch.Tensor, dense_a: torch.Tensor, dense_b: torch.Tensor) -> float:
+    """A fast upper bound of `surface_distance`: the same measure with the nearest dense sample point in place
+    of the nearest surface point (a sample point lies on the surface, so it is never nearer than the surface).
+
+    Args:
+        points_a, points_b: The measured points of each mesh (P, 3).
+        dense_a, dense_b: Dense surface samples of each mesh (D, 3), for example BOUND_POINTS points.
+
+    The bound is at most about half the spacing of the dense sample above the exact value (about 0.005
+    with 50,000 points), so a bound above the twin range proves that the pair is not a twin.
+    """
+    ab = knn_points(points_a[None], dense_b[None], K=1).dists[0, :, 0].mean()
+    ba = knn_points(points_b[None], dense_a[None], K=1).dists[0, :, 0].mean()
+    return float(0.5 * (ab + ba)) ** 0.5
 
 
 def surface_distance(mesh_a: Meshes, mesh_b: Meshes, points: int = DISTANCE_POINTS, seed: int = 0) -> float:

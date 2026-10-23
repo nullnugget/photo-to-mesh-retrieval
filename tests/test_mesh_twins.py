@@ -54,3 +54,44 @@ def test_point_samples_repeat_with_the_seed_and_leave_the_global_generator_alone
     first = mesh_twins.surface_points(_cube(), 100, seed=3)
     assert torch.equal(torch.rand(1), expected)
     assert torch.equal(first, mesh_twins.surface_points(_cube(), 100, seed=3))
+
+
+def test_the_point_triangle_distance_of_every_region():
+    a, b, c = torch.tensor([[0.0, 0, 0]]), torch.tensor([[1.0, 0, 0]]), torch.tensor([[0.0, 1, 0]])
+    cases = {  # point: squared distance, by the region of the closest place
+        (0.2, 0.2, 0.5): 0.25,  # inside (above the face)
+        (-1.0, -1.0, 0.0): 2.0,  # corner a
+        (2.0, 0.0, 0.0): 1.0,  # corner b
+        (0.0, 2.0, 0.0): 1.0,  # corner c
+        (0.5, -1.0, 0.0): 1.0,  # edge ab
+        (-1.0, 0.5, 0.0): 1.0,  # edge ac
+        (1.0, 1.0, 0.0): 0.5,  # edge bc (closest place (0.5, 0.5, 0))
+    }
+    points = torch.tensor(list(cases), dtype=torch.float32)
+    d = mesh_twins.point_triangle_sq_distance(points, a, b, c)[:, 0]
+    assert torch.allclose(d, torch.tensor(list(cases.values())), atol=1e-6)
+    # Zero area: the "triangle" a, b, 2b is the segment from (0, 0, 0) to (2, 0, 0).
+    line = mesh_twins.point_triangle_sq_distance(points, a, b, 2 * b)[:, 0]
+    assert torch.allclose(line, torch.tensor([0.29, 2.0, 0.0, 4.0, 1.0, 1.25, 1.0]), atol=1e-6)
+
+
+def test_the_point_to_surface_distance_equals_the_exact_distance_to_a_cube():
+    # The surface of the cube [-0.5, 0.5]³: outside, the distance to the box; inside, to the nearest face.
+    points = torch.rand(2000, 3, generator=torch.Generator().manual_seed(0)) * 2.4 - 1.2
+    outside = (points.abs() - 0.5).clamp(min=0).pow(2).sum(1)
+    inside = (0.5 - points.abs().max(dim=1).values).pow(2)
+    exact = torch.where((points.abs() <= 0.5).all(dim=1), inside, outside)
+    mesh_twins.POINT_TRIANGLE_BLOCK, old = 1000, mesh_twins.POINT_TRIANGLE_BLOCK  # several blocks
+    try:
+        got = mesh_twins.point_to_surface(points, _cube())
+    finally:
+        mesh_twins.POINT_TRIANGLE_BLOCK = old
+    assert torch.allclose(got, exact, atol=1e-6)
+
+
+def test_the_bound_is_never_below_the_exact_distance():
+    a, b = _cube(), _cube((1.0, 0.8, 1.0))
+    pa, pb = mesh_twins.surface_points(a, 500, 0), mesh_twins.surface_points(b, 500, 1)
+    exact = (0.5 * (float(mesh_twins.point_to_surface(pa, b).mean()) + float(mesh_twins.point_to_surface(pb, a).mean()))) ** 0.5
+    bound = mesh_twins.distance_bound(pa, pb, mesh_twins.surface_points(a, 20000, 2), mesh_twins.surface_points(b, 20000, 3))
+    assert exact <= bound < exact + 0.02

@@ -5,9 +5,11 @@ Stages (each one reads the output of the one before):
 1. grids:     one occupancy grid per gallery entry of the catalog (cells³, dilated), packed bits.
 2. pairs:     the grid IoU of every pair of entries (one matrix product on the GPU); the pairs at or
               above `min_iou` go to a table, with their categories.
-3. distances: the exact surface distance of the pairs at or above `min_iou` (about 0.2 seconds per
-              pair on the GPU). Each result is written at once, so a stopped run continues
-              where it stopped.
+3. distances: for each pair at or above `min_iou`, first a fast upper bound (nearest dense sample
+              points); a pair whose bound is below `exact_below` also gets the exact surface
+              distance (about 0.3 seconds per pair on the GPU). A bound at or above `exact_below`
+              proves that the pair is not a twin, so the slow test is not needed. Each result is
+              written at once, so a stopped run continues where it stopped.
 
 The step finds and measures; it does not merge. The threshold of the merge is chosen from the
 measured pairs by a visual review, and the merge itself changes the catalog (a later step).
@@ -15,7 +17,7 @@ measured pairs by a visual review, and the merge itself changes the catalog (a l
 Outputs (`data/derived/twins/<dataset>/`):
     grids.npz         mesh ids, cells, packed grids
     grid_pairs.csv    mesh_a, mesh_b, category_a, category_b, iou       (iou ≥ the pairs floor)
-    distances.csv     mesh_a, mesh_b, category_a, category_b, iou, distance
+    distances.csv     mesh_a, mesh_b, category_a, category_b, iou, bound, distance (empty if not measured)
 """
 
 import csv
@@ -31,7 +33,8 @@ from src.data import mesh_twins
 from src.data.catalog import read_table
 
 PAIR_COLUMNS = ["mesh_a", "mesh_b", "category_a", "category_b", "iou"]
-DISTANCE_COLUMNS = PAIR_COLUMNS + ["distance"]
+DISTANCE_COLUMNS = PAIR_COLUMNS + ["bound", "distance"]
+EXACT_BELOW = 0.03  # pairs with a bound at or above this are not twins (twins: exact distance about 0.000 to 0.002)
 
 
 def output_dir(dataset: str) -> Path:
@@ -74,8 +77,9 @@ def grid_pairs(dataset: str, min_iou: float, device: str = "cuda") -> Path:
     return path
 
 
-def distances(dataset: str, min_iou: float, device: str = "cuda") -> Path:
-    """Stage 3: the exact surface distance of the grid pairs at or above `min_iou`; continues a stopped run."""
+def distances(dataset: str, min_iou: float, device: str = "cuda", exact_below: float = EXACT_BELOW) -> Path:
+    """Stage 3: the bound, and below `exact_below` the exact surface distance, of the grid pairs at or above
+    `min_iou`; continues a stopped run."""
     folder = output_dir(dataset)
     with open(folder / "grid_pairs.csv") as f:
         pairs = [r for r in csv.DictReader(f) if float(r["iou"]) >= min_iou]
@@ -87,13 +91,17 @@ def distances(dataset: str, min_iou: float, device: str = "cuda") -> Path:
     todo = [p for p in pairs if (p["mesh_a"], p["mesh_b"]) not in done]
     mesh_path = {r["mesh_id"]: paths.resolve(r["mesh_path"]) for r in _entries(dataset)}
     print(f"{len(pairs):,} pairs with IoU ≥ {min_iou}; {len(done):,} measured before; {len(todo):,} to measure", flush=True)
-    cache: dict[str, torch.Tensor] = {}
+    cache: dict[str, tuple] = {}
 
     def mesh(mesh_id):
+        """(mesh, measured points, dense points) of one entry; the seeds come from the mesh id, so they repeat."""
         if mesh_id not in cache:
             if len(cache) > 500:  # pairs are sorted by IoU, not by mesh: keep the memory bounded
                 cache.clear()
-            cache[mesh_id] = mesh_twins.unit_mesh(mesh_path[mesh_id], device)
+            m = mesh_twins.unit_mesh(mesh_path[mesh_id], device)
+            seed = sum(mesh_id.encode())
+            cache[mesh_id] = (m, mesh_twins.surface_points(m, mesh_twins.DISTANCE_POINTS, seed),
+                              mesh_twins.surface_points(m, mesh_twins.BOUND_POINTS, seed + 1))
         return cache[mesh_id]
 
     new = not path.exists()
@@ -103,8 +111,13 @@ def distances(dataset: str, min_iou: float, device: str = "cuda") -> Path:
         if new:
             writer.writerow(DISTANCE_COLUMNS)
         for k, p in enumerate(tqdm(todo, desc="distances", mininterval=30)):
-            d = mesh_twins.surface_distance(mesh(p["mesh_a"]), mesh(p["mesh_b"]))
-            writer.writerow([p[c] for c in PAIR_COLUMNS] + [f"{d:.5f}"])
+            (ma, pa, da), (mb, pb, db) = mesh(p["mesh_a"]), mesh(p["mesh_b"])
+            bound = mesh_twins.distance_bound(pa, pb, da, db)
+            exact = ""
+            if bound < exact_below:
+                squared = 0.5 * (float(mesh_twins.point_to_surface(pa, mb).mean()) + float(mesh_twins.point_to_surface(pb, ma).mean()))
+                exact = f"{squared ** 0.5:.5f}"
+            writer.writerow([p[c] for c in PAIR_COLUMNS] + [f"{bound:.5f}", exact])
             if k % 50 == 0:
                 f.flush()
     print(f"{len(todo):,} pairs measured in {(time.perf_counter() - start) / 60:.1f} min -> {path.relative_to(paths.ROOT)}", flush=True)

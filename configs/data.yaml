@@ -35,6 +35,14 @@ data:
     v1_test_part: true               # seen_meshes: use the v1 evaluation photos as the test part (comparable with v1)
     v1_seed: 42                      # the v1 code shuffled the pix3d.json entries with this seed ...
     v1_holdout_fraction: 0.15        # ... and evaluated the last 15 % of the shuffled list
+    # Near-identical meshes: the same rule as data.abo.twins (see there). Pix3D has a few model folders
+    # with the same geometry (one mesh even twice, as a chair and as a sofa). The query step reads the
+    # groups of scripts/10_find_twins.py --stage merge and gives their photos one entry.
+    twins:
+      min_grid_iou: 0.8              # candidate pairs: occupancy-grid overlap at or above this
+      max_distance: 0.015            # twins: exact surface distance at or below this (radius of the unit sphere = 1)
+      group_classes:                 # the class of a group whose entries have different classes; key: "<category>/<model folder>" of one entry
+        sofa/IKEA_KLAPPSTA: chair    # IKEA KLAPPSTA armchair: the same mesh as chair/IKEA_KLAPPSTA_1
 
   abo:
     max_models_per_class: null       # null = use every model of each class

@@ -13,7 +13,9 @@ reported and left out of the catalog and the splits.
 
 Where the photos, masks, and meshes come from:
 
-- Pix3D: `pix3d.json`; the masks come with the dataset; one mesh row per model folder.
+- Pix3D: `pix3d.json`; the masks come with the dataset; one mesh row per model folder, except that
+  the twin groups of the merge stage (`10_find_twins.py --dataset pix3d --stage merge`) are one row
+  each: their photos show the group's representative and take the group's class (`merge_twins`).
 - ABO: the photos that the segment step kept (`data/derived/masks/abo_segment_results.csv`, verdict
   "kept"), with their SAM masks. Each photo's mesh is the gallery entry of its geometry group
   (`catalog_abo_meshes.photo_entry`), so that colour variants of one geometry are one answer. The mesh
@@ -35,12 +37,12 @@ run takes its photos from the mini outputs of the segment step (`02_segment_phot
 import json
 import time
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from src import paths
 from src.data import abo, catalog, pix3d, splits
-from src.pipeline import catalog_abo_meshes, download_abo, segment_photos
+from src.pipeline import catalog_abo_meshes, download_abo, find_twins, segment_photos
 from src.preprocess.queries import FAILED, QueryJob, make_query_images
 
 DATASETS = ("pix3d", "abo")
@@ -101,10 +103,37 @@ def _first_per_category(photos: list, count: int) -> list:
     return kept
 
 
+def merge_twins(photos: list, meshes: list, twins: dict[str, tuple[str, str]]) -> tuple[list, list]:
+    """Apply the twin groups of the merge stage (`find_twins.read_twin_groups`): each photo of a group
+    entry shows the group's representative and takes the group's class; the mesh list keeps one entry per
+    group (the representative, with the group's class and the mesh files of all its entries).
+
+    The query ids stay as they are (in Pix3D the photo names repeat across categories, so the category
+    part of the id keeps the photo's own folder).
+    """
+    if not twins:
+        return photos, meshes
+    photos = [replace(p, mesh_id=twins[p.mesh_id][0], category=twins[p.mesh_id][1]) if p.mesh_id in twins else p
+              for p in photos]
+    variants = Counter()
+    for m in meshes:
+        variants[twins[m.mesh_id][0] if m.mesh_id in twins else m.mesh_id] += m.num_mesh_variants
+    kept = []
+    for m in meshes:
+        if m.mesh_id in twins:
+            representative, category = twins[m.mesh_id]
+            if m.mesh_id != representative:
+                continue
+            m = replace(m, category=category)
+        kept.append(replace(m, num_mesh_variants=variants[m.mesh_id]))
+    return photos, kept
+
+
 def _pix3d_items(data_cfg: dict, mini: bool) -> DatasetItems:
-    """List the Pix3D photos and meshes, and the v1 test part."""
+    """List the Pix3D photos and meshes (twin groups merged, `merge_twins`), and the v1 test part."""
     annotations = pix3d.load_annotations()
-    photos = pix3d.photo_records(annotations)
+    photos, meshes = merge_twins(pix3d.photo_records(annotations), pix3d.mesh_records(annotations),
+                                 find_twins.read_twin_groups(pix3d.DATASET))
     if mini:
         photos = _first_per_category(photos, MINI_PHOTOS_PER_CATEGORY)
     settings = data_cfg["pix3d"]
@@ -113,7 +142,7 @@ def _pix3d_items(data_cfg: dict, mini: bool) -> DatasetItems:
         if settings["v1_test_part"]
         else None
     )
-    return DatasetItems(photos, pix3d.mesh_records(annotations), len(annotations), fixed_test)
+    return DatasetItems(photos, meshes, len(annotations), fixed_test)
 
 
 def _abo_items(data_cfg: dict, mini: bool) -> DatasetItems:
@@ -174,7 +203,10 @@ def _keep_parts(dataset: str, fresh: dict, query_rows: list[dict], data_cfg: dic
         print(f"split {fresh['name']}: no earlier file, new parts")
         return fresh
     old = splits.load_split(path)
-    kept = splits.carry_over_parts(old, fresh, query_rows, by_mesh=fresh["name"] == "unseen_meshes")
+    # The photo key: ABO query ids can change their category part (the image id stays); Pix3D query ids
+    # do not change, and Pix3D photo names repeat across categories, so the whole id is the key.
+    key = (lambda query_id: query_id) if dataset == pix3d.DATASET else (lambda query_id: query_id.rsplit("/", 1)[-1])
+    kept = splits.carry_over_parts(old, fresh, query_rows, by_mesh=fresh["name"] == "unseen_meshes", photo_key=key)
     if fresh["name"] == "unseen_categories":  # the test part must stay exactly the held-out categories
         held = set(data_cfg["splits"]["unseen_categories"]["held_out"].get(dataset, []))
         category = {r["query_id"]: r["category"] for r in query_rows}
@@ -216,7 +248,7 @@ def run(dataset: str, cfg: dict, mini: bool = False, overwrite: bool = False, wo
             query_id=p.query_id,
             photo_path=p.photo_path,
             mask_path=p.mask_path,
-            output_path=str(out["queries"] / dataset / p.category / f"{Path(p.photo_path).stem}.png"),
+            output_path=str(out["queries"] / f"{p.query_id}.png"),  # "<dataset>/<category>/<name>": unique, also after a merge
             background_rgb=tuple(data_cfg["background_rgb"]),
             margin=data_cfg["crop_margin"],
             output_size=data_cfg["image_size"],

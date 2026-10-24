@@ -1,6 +1,6 @@
 {
  "name": "seen_meshes",
- "description": "Photos split at random; most meshes have photos in every part. Test part: a fixed list of photos.",
+ "description": "Photos split at random; most meshes have photos in every part. Test part: a fixed list of photos. Parts carried over from the earlier split (a catalog change); a mesh in several parts went whole into a non-test part.",
  "seed": 42,
  "counts": {
   "train": 7702,

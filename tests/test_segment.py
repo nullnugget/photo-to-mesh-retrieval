@@ -217,3 +217,17 @@ def test_object_candidate_picks_the_object_or_none():
     candidates = [segment.MaskResult(background, 0.95), segment.MaskResult(obj, 0.80)]
     assert object_candidate(photo, box, candidates, rules) is candidates[1]  # despite SAM's lower score
     assert object_candidate(photo, box, candidates[:1], rules) is None
+
+
+def test_photo_files_stay_in_the_photo_folder_when_the_class_changes():
+    from pathlib import Path
+
+    from src import paths
+    from src.pipeline import extract_features, segment_photos
+
+    # A Pix3D sofa photo that a twin merge made a chair: "chair/0851" is another photo.
+    row = {"query_id": "pix3d/sofa/0851", "dataset": "pix3d", "category": "chair",
+           "photo_path": "data/raw/pix3d/img/sofa/0851.jpg", "query_path": "data/derived/queries/pix3d/sofa/0851.png"}
+    assert segment_photos.photo_folder(row["query_id"]) == "sofa"
+    assert extract_features.sam_mask_file(row) == paths.MASKS_DIR / "pix3d" / "sofa" / "0851.png"
+    assert extract_features.sam_query_file(Path("root"), row) == Path("root/pix3d_sam_queries/sofa/0851.png")

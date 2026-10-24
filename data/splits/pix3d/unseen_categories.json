@@ -1,6 +1,6 @@
 {
  "name": "unseen_categories",
- "description": "All photos of the held-out categories ['bookcase', 'wardrobe'] form the test part.",
+ "description": "All photos of the held-out categories ['bookcase', 'wardrobe'] form the test part. Parts carried over from the earlier split (a catalog change); a mesh in several parts went whole into a non-test part.",
  "seed": 42,
  "counts": {
   "train": 8516,

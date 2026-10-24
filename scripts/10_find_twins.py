@@ -11,6 +11,9 @@ Usage (from the repository root):
     python scripts/10_find_twins.py --dataset abo --stage distances --min-iou 0.8   # exact test (GPU, ~0.3 s per pair; continues)
     python scripts/10_find_twins.py --dataset abo --stage merge                 # one entry per twin group (data.abo.twins)
     python scripts/03_make_queries.py --dataset abo --keep-parts                # then: photos → new entries, splits kept
+
+Pix3D works the same way (its merge settings: data.pix3d.twins); its merge stage writes only the group
+table, and the query step applies it.
 """
 
 import argparse
@@ -38,7 +41,7 @@ def main() -> None:
     elif args.stage == "distances":
         find_twins.distances(args.dataset, args.min_iou, args.device)
     else:
-        find_twins.merge(config_from_args(args)["data"]["abo"]["twins"], args.dataset)
+        find_twins.merge(config_from_args(args)["data"][args.dataset]["twins"], args.dataset)
 
 
 if __name__ == "__main__":

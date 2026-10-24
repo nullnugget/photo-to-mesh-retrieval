@@ -27,7 +27,7 @@ A mini run takes 2 meshes per category and 3 photos of each, and writes all outp
 Outputs (normal run):
     data/derived/features/<backbone>/<dataset>_<set>.npz                 the feature files
     data/derived/features/<backbone>/<dataset>_features_report.json      rows, speed, memory, left-out images
-    data/derived/masks/pix3d_sam_queries/<category>/<name>.png           Pix3D query images with SAM masks
+    data/derived/masks/pix3d_sam_queries/<folder>/<name>.png             Pix3D query images with SAM masks
 """
 
 import datetime
@@ -79,8 +79,10 @@ def sam_queries_root(mini: bool) -> Path:
 
 
 def sam_query_file(root: Path, query_row: dict) -> Path:
-    """Return the query image made with the SAM mask, e.g. <root>/pix3d_sam_queries/chair/0001.png."""
-    return root / f"{query_row['dataset']}_sam_queries" / query_row["category"] / Path(query_row["query_path"]).name
+    """Return the query image made with the SAM mask, e.g. <root>/pix3d_sam_queries/chair/0001.png: the folder
+    and name of the query image (the photo's own folder, `segment_photos.photo_folder`, not its class)."""
+    query_path = Path(query_row["query_path"])
+    return root / f"{query_row['dataset']}_sam_queries" / query_path.parent.name / query_path.name
 
 
 def sam_mask_file(query_row: dict) -> Path:

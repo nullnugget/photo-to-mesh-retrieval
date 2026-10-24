@@ -31,7 +31,7 @@ settings that the prompt uses are compared (see `SETTINGS_USED`): for example, a
 cleaning rules does not stop a Pix3D run with the reference box, because that run does not use them.
 
 Outputs (normal run):
-    data/derived/masks/<dataset>/<category>/<name>.png      the masks
+    data/derived/masks/<dataset>/<folder>/<name>.png        the masks (folder: the photo's own, `photo_folder`)
     data/derived/masks/<dataset>_segment_config.yaml        the settings that made them
     data/derived/masks/<dataset>_segment_results.csv        one row per photo (see RESULT_COLUMNS)
     data/derived/masks/<dataset>_segment_report.json        totals of all rows
@@ -109,7 +109,17 @@ class PhotoItem:
     category: str
     photo_path: str  # relative to the repository root
     reference_mask_path: str | None  # the dataset's own mask, or None
-    mask_name: str  # file name of the SAM mask inside <masks>/<dataset>/<category>/
+    mask_name: str  # file name of the SAM mask inside <masks>/<dataset>/<photo folder>/ (`photo_folder`)
+
+
+def photo_folder(photo_id: str) -> str:
+    """The folder of a photo's files: the middle part of its id ("pix3d/sofa/0851" -> "sofa").
+
+    Not the class: in Pix3D a twin merge can give a photo another class (the KLAPPSTA sofa photos are
+    chairs), but its files stay in the folder of its own name, and Pix3D photo names repeat across
+    folders ("chair/0851" is another photo).
+    """
+    return photo_id.split("/")[1]
 
 
 def output_root(mini: bool) -> Path:
@@ -118,8 +128,8 @@ def output_root(mini: bool) -> Path:
 
 
 def mask_file(root: Path, dataset: str, item: PhotoItem) -> Path:
-    """Return the SAM mask file of one photo, for example <root>/pix3d/chair/0001.png."""
-    return root / dataset / item.category / item.mask_name
+    """Return the SAM mask file of one photo, for example <root>/pix3d/chair/0001.png (`photo_folder`)."""
+    return root / dataset / photo_folder(item.photo_id) / item.mask_name
 
 
 def results_file(dataset: str, root: Path = paths.MASKS_DIR) -> Path:

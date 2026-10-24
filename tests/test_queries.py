@@ -40,3 +40,20 @@ def test_jobs_give_done_failed_and_skipped(tmp_path, workers):
     with Image.open(good.output_path) as query:
         assert query.size == (32, 32)
     assert make_query_images([good], workers=workers)[0]["status"] == SKIPPED  # the file exists now
+
+
+def test_merge_twins_gives_the_photos_of_a_group_one_entry():
+    from src.pipeline.make_queries import GalleryMesh, QueryPhoto, merge_twins
+
+    def photo(query_id, mesh_id):
+        return QueryPhoto(query_id, mesh_id.split("/")[1], mesh_id, "p.png", "m.png", False, False, False)
+
+    photos = [photo("x/sofa/0001", "x/sofa/A"), photo("x/chair/0001", "x/chair/A_1"), photo("x/chair/0002", "x/chair/B")]
+    meshes = [GalleryMesh("x/sofa/A", "sofa", "a.obj", 1), GalleryMesh("x/chair/A_1", "chair", "a1.obj", 2),
+              GalleryMesh("x/chair/B", "chair", "b.obj", 1)]
+    twins = {"x/sofa/A": ("x/chair/A_1", "chair"), "x/chair/A_1": ("x/chair/A_1", "chair")}
+    new_photos, new_meshes = merge_twins(photos, meshes, twins)
+    assert [(p.query_id, p.mesh_id, p.category) for p in new_photos] == [
+        ("x/sofa/0001", "x/chair/A_1", "chair"), ("x/chair/0001", "x/chair/A_1", "chair"), ("x/chair/0002", "x/chair/B", "chair")]
+    assert [(m.mesh_id, m.category, m.num_mesh_variants) for m in new_meshes] == [("x/chair/A_1", "chair", 3), ("x/chair/B", "chair", 1)]
+    assert merge_twins(photos, meshes, {}) == (photos, meshes)

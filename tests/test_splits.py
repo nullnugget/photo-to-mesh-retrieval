@@ -187,3 +187,22 @@ def test_an_unseen_categories_training_leaves_out_the_near_relatives():
     pix3d_only, _ = training_photos(["pix3d"], "unseen_categories", "train", cfg["train"]["query_images"], leave_out)
     unchanged, _ = training_photos(["pix3d"], "unseen_categories", "train", cfg["train"]["query_images"])
     assert len(pix3d_only) == len(unchanged)
+
+
+def test_carry_over_keeps_parts_and_moves_a_split_mesh_out_of_test():
+    from src.data.splits import carry_over_parts
+    old = {"name": "unseen_meshes", "description": "d", "seed": 1,
+           "parts": {"train": ["abo/chair/p2", "abo/sofa/p3"], "val": ["abo/sofa/p4"], "test": ["abo/chair/p1", "abo/table/p6"]}}
+    # After a merge: p1 (test) and p2 (train) show the same entry m1; p3's class changed (chair → sofa did not matter);
+    # p5 is new; p6 is alone in the test part.
+    queries = [{"query_id": "abo/chair/p1", "mesh_id": "m1"}, {"query_id": "abo/chair/p2", "mesh_id": "m1"},
+               {"query_id": "abo/chair/p3", "mesh_id": "m2"}, {"query_id": "abo/sofa/p4", "mesh_id": "m3"},
+               {"query_id": "abo/sofa/p5", "mesh_id": "m4"}, {"query_id": "abo/table/p6", "mesh_id": "m5"}]
+    fresh = {"name": "unseen_meshes", "description": "fresh", "seed": 1,
+             "parts": {"train": ["abo/chair/p1", "abo/chair/p2", "abo/chair/p3"], "val": ["abo/sofa/p5"], "test": ["abo/sofa/p4", "abo/table/p6"]}}
+    kept = carry_over_parts(old, fresh, queries, by_mesh=True)
+    assert kept["parts"]["test"] == ["abo/table/p6"]  # p1 left the test part with its mesh; nothing moved in
+    assert set(kept["parts"]["train"]) == {"abo/chair/p1", "abo/chair/p2", "abo/chair/p3"}
+    assert kept["parts"]["val"] == ["abo/sofa/p4", "abo/sofa/p5"]  # p4 kept val (fresh said test); p5 is new: fresh part
+    photo_level = carry_over_parts(old, fresh, queries, by_mesh=False)
+    assert photo_level["parts"]["test"] == ["abo/chair/p1", "abo/table/p6"]

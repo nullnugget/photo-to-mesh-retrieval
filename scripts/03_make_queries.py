@@ -23,6 +23,7 @@ Usage (from the repository root):
     python scripts/03_make_queries.py --dataset pix3d --set data.crop_margin=0.05
     python scripts/03_make_queries.py --dataset abo                 # after the ABO segment step (kept photos)
     python scripts/03_make_queries.py --dataset abo --mini          # from the segment step's mini outputs
+    python scripts/03_make_queries.py --dataset abo --keep-parts    # after merged ABO entries: photos keep their parts
 """
 
 import argparse
@@ -43,9 +44,10 @@ def main() -> None:
     parser.add_argument("--mini", action="store_true", help="5 photos per category, into test_outputs/")
     parser.add_argument("--overwrite", action="store_true", help="make the query images again if they exist")
     parser.add_argument("--workers", type=int, default=default_workers(), help="parallel processes")
+    parser.add_argument("--keep-parts", action="store_true", help="each photo keeps its part of the existing split files (after a catalog change)")
     add_config_args(parser)
     args = parser.parse_args()
-    make_queries.run(args.dataset, config_from_args(args), mini=args.mini, overwrite=args.overwrite, workers=args.workers)
+    make_queries.run(args.dataset, config_from_args(args), mini=args.mini, overwrite=args.overwrite, workers=args.workers, keep_parts=args.keep_parts)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,10 @@ copy would count as an error by chance. Thus each distinct geometry becomes one 
    `num_mesh_variants` is the number of meshes in the group. `num_photos` is 0 until the ABO query
    step adds the photos.
 5. Group table: `data/raw/abo/manifest/geometry_groups.csv` maps every ABO mesh to its group's
-   entry, so that the query step can give each photo the right gallery entry.
+   entry, so that the query step can give each photo the right gallery entry. The same table is
+   also kept as `geometry_groups_exact.csv`: the twin step (`src/pipeline/find_twins.py`, stage
+   merge) joins near-identical groups later, rewrites `geometry_groups.csv` and the ABO catalog rows,
+   and always starts again from the exact table.
 
 The ABO meshes can be rendered as soon as their catalog rows exist; the photos (which need masks)
 are added later by the query step.
@@ -43,6 +46,8 @@ from src.render.normalize import normalize_to_unit_sphere
 SAME_SHAPE_TOLERANCE = 0.002  # largest vertex difference of copies, in unit-sphere units
 SAMPLED_VERTICES = 2048  # vertices compared per mesh
 GROUP_COLUMNS = ["mesh_id", "group_mesh_id", "category", "group_category", "group_size"]
+GROUPS_FILE = "geometry_groups.csv"  # the groups that the query step uses (exact copies; after a twin merge, also twins)
+EXACT_GROUPS_FILE = "geometry_groups_exact.csv"  # the groups of exact copies only (this stage)
 
 
 def geometry_signature(mesh_path: str | Path) -> tuple[tuple, np.ndarray]:
@@ -60,7 +65,7 @@ def geometry_signature(mesh_path: str | Path) -> tuple[tuple, np.ndarray]:
 
 def read_geometry_groups(manifest_dir: Path) -> dict[str, str]:
     """Read `geometry_groups.csv` (written by `run`): {mesh id: mesh id of its group's gallery entry}."""
-    with open(manifest_dir / "geometry_groups.csv", newline="") as f:
+    with open(manifest_dir / GROUPS_FILE, newline="") as f:
         return {row["mesh_id"]: row["group_mesh_id"] for row in csv.DictReader(f)}
 
 
@@ -135,10 +140,11 @@ def run(meshes: list[abo.AboMesh], mesh_folder: Path, mesh_file, catalog_dir: Pa
     group_rows.sort(key=lambda r: r["mesh_id"])
     catalog.replace_dataset_rows(catalog_dir / paths.MESHES_CSV.name, rows, abo.DATASET, catalog.MESH_COLUMNS)
     manifest_dir.mkdir(parents=True, exist_ok=True)
-    with open(manifest_dir / "geometry_groups.csv", "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=GROUP_COLUMNS)
-        writer.writeheader()
-        writer.writerows(group_rows)
+    for name in (GROUPS_FILE, EXACT_GROUPS_FILE):
+        with open(manifest_dir / name, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=GROUP_COLUMNS)
+            writer.writeheader()
+            writer.writerows(group_rows)
 
     report = {
         "meshes": len(meshes),

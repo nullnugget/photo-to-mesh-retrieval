@@ -228,3 +228,30 @@ def load_grids(path: Path) -> tuple[list[str], np.ndarray]:
         cells = int(data["cells"])
         grids = np.unpackbits(data["bits"], axis=1, count=cells ** 3).astype(bool).reshape(-1, cells, cells, cells)
         return data["mesh_ids"].tolist(), grids
+
+
+def complete_link_groups(distances: dict[frozenset, float], threshold: float) -> list[frozenset]:
+    """Groups of twins: every pair of a group is a measured pair with distance ≤ threshold ("complete link").
+
+    Args:
+        distances: {frozenset({mesh a, mesh b}): distance} of the measured pairs; a pair that is not in
+            the table counts as far apart.
+        threshold: The largest distance of two twins.
+
+    Returns:
+        The groups of two or more meshes.
+
+    Why complete link: with "A is close to B, and B is close to C" (single link), chains of small steps
+    join different forms (on ABO at 0.025: one group of 259 similar sofas whose ends are other designs).
+    The pairs are taken from the closest; two groups join only if all their cross pairs are close.
+    """
+    group_of: dict[str, frozenset] = {}
+    for pair, d in sorted(distances.items(), key=lambda kv: (kv[1], sorted(kv[0]))):
+        if d > threshold:
+            break
+        a, b = sorted(pair)
+        ga, gb = group_of.get(a, frozenset([a])), group_of.get(b, frozenset([b]))
+        if ga != gb and all(distances.get(frozenset((x, y)), float("inf")) <= threshold for x in ga for y in gb):
+            for member in ga | gb:
+                group_of[member] = ga | gb
+    return sorted({g for g in group_of.values()}, key=lambda g: (-len(g), sorted(g)[0]))

@@ -95,3 +95,11 @@ def test_the_bound_is_never_below_the_exact_distance():
     exact = (0.5 * (float(mesh_twins.point_to_surface(pa, b).mean()) + float(mesh_twins.point_to_surface(pb, a).mean()))) ** 0.5
     bound = mesh_twins.distance_bound(pa, pb, mesh_twins.surface_points(a, 20000, 2), mesh_twins.surface_points(b, 20000, 3))
     assert exact <= bound < exact + 0.02
+
+
+def test_complete_link_groups_do_not_chain():
+    d = {frozenset(("a", "b")): 0.01, frozenset(("b", "c")): 0.01, frozenset(("a", "c")): 0.05,  # a-b-c: a chain
+         frozenset(("x", "y")): 0.002, frozenset(("y", "z")): 0.004, frozenset(("x", "z")): 0.012}  # x, y, z: all close
+    groups = mesh_twins.complete_link_groups(d, 0.015)
+    assert groups == [frozenset("xyz"), frozenset("ab")]  # c stays alone: a and c are far apart
+    assert mesh_twins.complete_link_groups(d, 0.001) == []

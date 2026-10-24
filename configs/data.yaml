@@ -73,6 +73,29 @@ data:
       - {product_type: HOME, leaf: "Baskets, Bins", class: basket_bin}
       - {product_type: HOME, leaf: "Space Heaters", class: space_heater}
       - {product_type: CLOCK, class: clock}
+    # Twins: near-identical meshes (colour, material, and size variants of one design) become one gallery
+    # entry, because the grey, size-normalised renders cannot tell them apart (a photo cannot either).
+    # Found by geometry only (scripts/10_find_twins.py; src/data/mesh_twins.py): occupancy grids select
+    # candidate pairs, the exact surface distance decides; every pair of a group must be within
+    # max_distance ("complete link"), so that chains of small steps do not join different designs.
+    twins:
+      min_grid_iou: 0.8              # candidate pairs: occupancy-grid overlap at or above this
+      max_distance: 0.015            # twins: exact surface distance at or below this (radius of the unit sphere = 1)
+      group_classes:                 # the class of a group whose entries have different classes; key: one product id of the group
+        B07B4D4964: sofa             # sectional sofa (4 chair, 4 sofa entries)
+        B07GFLD22Q: cabinet          # tall closed box (3 clothes_rack, 2 cabinet, 1 desk)
+        B07BWJCPPP: sofa             # sectional (4 sofa, 1 chair)
+        B07B4L562Y: sofa             # sectional (4 sofa, 1 chair)
+        B073G6GTQP: ottoman          # long upholstered storage seat, sold as "storage bench" and "storage ottoman" (2 bench, 2 ottoman)
+        B082QCY5RF: sofa             # sofa (2 sofa, 1 chair)
+        B07H8JN9NV: cabinet          # cabinet on legs (cabinet, table)
+        B07TZ9BGNZ: cabinet          # closed tall box (cabinet, shelf)
+        B07V152DQ8: cabinet          # closed box (cabinet, shelf)
+        B0714QGLSD: chair            # armchair (chair, ottoman)
+        B07BWK44K2: ottoman          # tufted footstool (chair, ottoman)
+        B07JC4M6VR: sofa             # sectional (chair, sofa)
+        B01M4OYBOI: table            # oval coffee table (clothes_rack, table)
+        B07B4D86J6: sofa             # sofa (ottoman, sofa)
     # Class overrides: product id (ASIN) -> class. They correct products whose Amazon metadata has a
     # wrong product type. An override wins over the class rules; Amazon's files stay unchanged.
     #

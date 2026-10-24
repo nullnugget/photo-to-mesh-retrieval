@@ -11,17 +11,32 @@ Stages (each one reads the output of the one before):
               proves that the pair is not a twin, so the slow test is not needed. Each result is
               written at once, so a stopped run continues where it stopped.
 
-The step finds and measures; it does not merge. The threshold of the merge is chosen from the
-measured pairs by a visual review, and the merge itself changes the catalog (a later step).
+4. merge (ABO): the twin groups at `data.abo.twins.max_distance`, with every pair of a group within
+              it ("complete link", `mesh_twins.complete_link_groups`), become one gallery entry each.
+              The entries are the groups of exact copies (`catalog_abo_meshes`, D49-style); the stage
+              always starts from their table `geometry_groups_exact.csv`, so it can run again. A group
+              whose entries have different classes takes the class of `data.abo.twins.group_classes`
+              (key: any product id of the group). The representative is the entry of the group's class
+              with the smallest product id (an entry that is rendered already). Written: the group table
+              `geometry_groups.csv` (every ABO mesh → its final entry) and the ABO rows of
+              `meshes.csv`. Then the query step (`03_make_queries.py --dataset abo --keep-parts`) gives
+              the photos their new entries.
+
+Stages 1 to 3 work on the entries of exact copies (never on merged entries), so they give the same
+pairs after a merge. The threshold of stage 4 was chosen from the measured pairs by a visual review.
 
 Outputs (`data/derived/twins/<dataset>/`):
     grids.npz         mesh ids, cells, packed grids
     grid_pairs.csv    mesh_a, mesh_b, category_a, category_b, iou       (iou ≥ the pairs floor)
     distances.csv     mesh_a, mesh_b, category_a, category_b, iou, bound, distance (empty if not measured)
+    twin_groups.csv   group, entry, category, representative             (stage merge)
+Outputs of stage 4 in the catalog: `data/raw/abo/manifest/geometry_groups.csv`, the ABO rows of
+`data/derived/catalog/meshes.csv`.
 """
 
 import csv
 import time
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -29,8 +44,9 @@ import torch
 from tqdm import tqdm
 
 from src import paths
-from src.data import mesh_twins
+from src.data import abo, catalog, mesh_twins
 from src.data.catalog import read_table
+from src.pipeline import catalog_abo_meshes, download_abo
 
 PAIR_COLUMNS = ["mesh_a", "mesh_b", "category_a", "category_b", "iou"]
 DISTANCE_COLUMNS = PAIR_COLUMNS + ["bound", "distance"]
@@ -42,8 +58,28 @@ def output_dir(dataset: str) -> Path:
     return paths.DERIVED_DIR / "twins" / dataset
 
 
+def exact_entries() -> list[dict]:
+    """The ABO entries of the exact-copy groups, as catalog rows, sorted by mesh id.
+
+    Built from `geometry_groups_exact.csv` and the download manifest (not from the catalog, which holds
+    the merged entries after stage 4).
+    """
+    with open(paths.ABO_MANIFEST_DIR / catalog_abo_meshes.EXACT_GROUPS_FILE, newline="") as f:
+        groups = list(csv.DictReader(f))
+    meshes = {m.mesh_id: m for m in abo.read_manifest(paths.ABO_MANIFEST_DIR)[0]}
+    size = {}
+    for row in groups:
+        size[row["group_mesh_id"]] = int(row["group_size"])
+    return [{"mesh_id": entry, "dataset": abo.DATASET, "category": meshes[entry].category,
+             "mesh_path": str(download_abo.mesh_file(paths.ABO_MESHES_DIR, meshes[entry]).relative_to(paths.ROOT)),
+             "render_dir": str((paths.RENDERS_DIR / entry).relative_to(paths.ROOT)),
+             "num_photos": 0, "num_mesh_variants": size[entry]} for entry in sorted(size)]
+
+
 def _entries(dataset: str) -> list[dict]:
-    """The gallery entries of a dataset (catalog rows), in catalog order."""
+    """The gallery entries that the stages compare: for ABO the exact-copy entries, else the catalog rows."""
+    if dataset == abo.DATASET:
+        return exact_entries()
     return [row for row in read_table(paths.MESHES_CSV) if row["dataset"] == dataset]
 
 
@@ -122,3 +158,88 @@ def distances(dataset: str, min_iou: float, device: str = "cuda", exact_below: f
                 f.flush()
     print(f"{len(todo):,} pairs measured in {(time.perf_counter() - start) / 60:.1f} min -> {path.relative_to(paths.ROOT)}", flush=True)
     return path
+
+
+def measured_distances(dataset: str) -> dict[frozenset, float]:
+    """The distance of every measured pair: the exact value, or the bound if the exact test was skipped
+    (the bound is never smaller than the exact value, so a skipped pair stays "far" for any threshold
+    below the bound)."""
+    with open(output_dir(dataset) / "distances.csv") as f:
+        return {frozenset((r["mesh_a"], r["mesh_b"])): float(r["distance"] or r["bound"]) for r in csv.DictReader(f)}
+
+
+def merge(twins_cfg: dict, dataset: str = abo.DATASET) -> dict:
+    """Stage 4: join the twin groups into one gallery entry each; rewrite the group table and the ABO catalog rows.
+
+    Args:
+        twins_cfg: `data.abo.twins` (max_distance, min_grid_iou, group_classes).
+
+    Returns:
+        A report: entries before and after, groups, meshes in groups, the classes chosen by the settings.
+
+    Raises:
+        ValueError: If a group with several classes has no entry in `group_classes`, if a key of
+            `group_classes` is in no group or two keys are in one group, or if the chosen class has no
+            entry in the group.
+    """
+    if dataset != abo.DATASET:
+        raise ValueError("the merge stage is for ABO (its catalog stage keeps the exact-copy groups)")
+    folder = output_dir(dataset)
+    with open(folder / "grid_pairs.csv") as f:
+        min_iou = min(float(r["iou"]) for r in csv.DictReader(f))
+    if min_iou > twins_cfg["min_grid_iou"] + 1e-9:
+        raise ValueError(f"grid_pairs.csv starts at IoU {min_iou}, above min_grid_iou {twins_cfg['min_grid_iou']}")
+    entries = {row["mesh_id"]: row for row in exact_entries()}
+    with open(paths.ABO_MANIFEST_DIR / catalog_abo_meshes.EXACT_GROUPS_FILE, newline="") as f:
+        exact = list(csv.DictReader(f))
+    entry_of_product = {row["mesh_id"].split("/")[-1]: row["group_mesh_id"] for row in exact}
+
+    groups = mesh_twins.complete_link_groups(measured_distances(dataset), twins_cfg["max_distance"])
+    chosen = dict(twins_cfg.get("group_classes") or {})
+    used, final_of, out_rows = set(), {}, []
+    for k, group in enumerate(groups):
+        classes = {entries[e]["category"] for e in group}
+        keys = [p for p in chosen if entry_of_product.get(p) in group]
+        if len(keys) > 1:
+            raise ValueError(f"group {sorted(group)}: two keys in group_classes {keys}")
+        if len(classes) > 1 and not keys:
+            raise ValueError(f"group {sorted(group)} has the classes {sorted(classes)}: add one product id of it to data.abo.twins.group_classes")
+        category = chosen[keys[0]] if keys else classes.pop()
+        used.update(keys)
+        candidates = sorted(e for e in group if entries[e]["category"] == category)
+        if not candidates:
+            raise ValueError(f"group {sorted(group)}: no entry of the chosen class {category!r}")
+        lead = min(candidates, key=lambda e: e.split("/")[-1])
+        for e in sorted(group):
+            final_of[e] = lead
+            out_rows.append({"group": k, "entry": e, "category": entries[e]["category"], "representative": lead})
+    unused = sorted(set(chosen) - used)
+    if unused:
+        raise ValueError(f"data.abo.twins.group_classes: product ids in no group with several classes {unused}")
+
+    # The group table: every ABO mesh → its final entry; the catalog: one row per final entry.
+    members = defaultdict(list)
+    for row in exact:
+        members[final_of.get(row["group_mesh_id"], row["group_mesh_id"])].append(row)
+    group_rows, mesh_rows = [], []
+    for lead, rows in sorted(members.items()):
+        for row in rows:
+            group_rows.append({"mesh_id": row["mesh_id"], "group_mesh_id": lead, "category": row["category"],
+                               "group_category": entries[lead]["category"], "group_size": len(rows)})
+        mesh_rows.append({**entries[lead], "num_mesh_variants": len(rows)})
+    group_rows.sort(key=lambda r: r["mesh_id"])
+    with open(paths.ABO_MANIFEST_DIR / catalog_abo_meshes.GROUPS_FILE, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=catalog_abo_meshes.GROUP_COLUMNS)
+        writer.writeheader()
+        writer.writerows(group_rows)
+    catalog.replace_dataset_rows(paths.MESHES_CSV, mesh_rows, dataset, catalog.MESH_COLUMNS)
+    with open(folder / "twin_groups.csv", "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["group", "entry", "category", "representative"])
+        writer.writeheader()
+        writer.writerows(out_rows)
+    report = {"entries_before": len(entries), "entries_after": len(mesh_rows), "groups": len(groups),
+              "entries_in_groups": sum(len(g) for g in groups), "group_classes": chosen,
+              "max_distance": twins_cfg["max_distance"], "min_grid_iou": twins_cfg["min_grid_iou"]}
+    print(f"merge: {len(entries)} → {len(mesh_rows)} ABO entries ({len(groups)} twin groups of {report['entries_in_groups']} entries; "
+          f"max distance {twins_cfg['max_distance']}, complete link) -> {catalog_abo_meshes.GROUPS_FILE}, meshes.csv", flush=True)
+    return report

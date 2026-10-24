@@ -167,7 +167,26 @@ def _make_splits(dataset: str, query_rows: list[dict], split_cfg: dict, fixed_te
     return made
 
 
-def run(dataset: str, cfg: dict, mini: bool = False, overwrite: bool = False, workers: int | None = None) -> dict:
+def _keep_parts(dataset: str, fresh: dict, query_rows: list[dict], data_cfg: dict, splits_dir: Path) -> dict:
+    """The fresh split with the parts of the existing split file carried over (`splits.carry_over_parts`)."""
+    path = paths.split_file(dataset, fresh["name"], splits_dir)
+    if not path.exists():
+        print(f"split {fresh['name']}: no earlier file, new parts")
+        return fresh
+    old = splits.load_split(path)
+    kept = splits.carry_over_parts(old, fresh, query_rows, by_mesh=fresh["name"] == "unseen_meshes")
+    if fresh["name"] == "unseen_categories":  # the test part must stay exactly the held-out categories
+        held = set(data_cfg["splits"]["unseen_categories"]["held_out"].get(dataset, []))
+        category = {r["query_id"]: r["category"] for r in query_rows}
+        wrong = [q for p, ids in kept["parts"].items() for q in ids if (category[q] in held) != (p == "test")]
+        if wrong:
+            raise ValueError(f"unseen_categories: {len(wrong)} photos are in the wrong part for their category after the change")
+    print(f"split {fresh['name']}: parts carried over; earlier {old['counts']}, now {kept['counts']}")
+    return kept
+
+
+def run(dataset: str, cfg: dict, mini: bool = False, overwrite: bool = False, workers: int | None = None,
+        keep_parts: bool = False) -> dict:
     """Run the query step for one dataset, and return its report (also saved as JSON).
 
     Args:
@@ -177,6 +196,9 @@ def run(dataset: str, cfg: dict, mini: bool = False, overwrite: bool = False, wo
         overwrite: True = make the query images again if they exist. Otherwise existing images
             are kept, and only the catalog rows and the splits are written again.
         workers: Number of parallel worker processes (None = the default, 8 or fewer).
+        keep_parts: True = each photo keeps its part of the existing split files (after a catalog
+            change, for example merged ABO entries; `splits.carry_over_parts`), so that no photo moves
+            into a test part. False = new splits from the seed.
     """
     if dataset not in DATASETS:
         raise ValueError(f"dataset must be one of {DATASETS}, got {dataset!r}")
@@ -248,6 +270,8 @@ def run(dataset: str, cfg: dict, mini: bool = False, overwrite: bool = False, wo
 
     # 4. Split files.
     made_splits = _make_splits(dataset, query_rows, data_cfg["splits"], items.fixed_test)
+    if keep_parts:
+        made_splits = [_keep_parts(dataset, split, query_rows, data_cfg, out["splits"]) for split in made_splits]
     for split in made_splits:
         split_path = splits.save_split(split, paths.split_file(dataset, split["name"], out["splits"]))
         print(f"split {split['name']}: {split['counts']} -> {split_path.relative_to(paths.ROOT)}")

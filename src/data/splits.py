@@ -346,6 +346,56 @@ def category_folds(base: dict, queries: list[dict], seed: int = 42, categories: 
     return made
 
 
+def carry_over_parts(old: dict, fresh: dict, queries: list[dict], by_mesh: bool,
+                     photo_key=lambda query_id: query_id.rsplit("/", 1)[-1]) -> dict:
+    """Keep the parts of an earlier split after a catalog change (for example merged gallery entries).
+
+    Why: the shared settings were chosen only on photos outside every test part (the test-free
+    photos). A photo that helped to choose a setting must never move into a test part, or that test
+    part is no longer clean. So each photo keeps its earlier part, and a new test part is a subset
+    of the earlier one.
+
+    Args:
+        old: The earlier split (its parts decide).
+        fresh: The split made from the new catalog (it gives the name, the description, the seed, and
+            the part of a photo that the earlier split does not have).
+        queries: The new catalog rows (query_id, mesh_id, category) of the split's photos.
+        by_mesh: True for a split by mesh ("unseen_meshes"): all photos of a mesh must be in one part.
+            A mesh whose photos are in several parts (two entries that were merged) goes as a whole
+            into the non-test part with the most of its photos (a tie: train). Its test photos become
+            training photos; no photo moves into the test part.
+        photo_key: Identifies a photo across the change (default: the last part of the query id, the
+            image id; the category part of an ABO query id can change).
+
+    Raises:
+        ValueError: If photo keys repeat.
+    """
+    keys = [photo_key(row["query_id"]) for row in queries]
+    if len(set(keys)) != len(keys):
+        raise ValueError("photo keys repeat; give a photo_key that is unique within the dataset")
+    old_part = {photo_key(q): part for part, ids in old["parts"].items() for q in ids}
+    fresh_part = {q: part for part, ids in fresh["parts"].items() for q in ids}
+    part = {row["query_id"]: old_part.get(photo_key(row["query_id"]), fresh_part[row["query_id"]]) for row in queries}
+    if by_mesh:
+        by = defaultdict(Counter)
+        for row in queries:
+            by[row["mesh_id"]][part[row["query_id"]]] += 1
+        target = {}
+        for mesh_id, counts in by.items():
+            if len(counts) > 1:
+                non_test = {p: n for p, n in counts.items() if p != "test"}
+                target[mesh_id] = max(non_test, key=lambda p: (non_test[p], p == "train"))
+        for row in queries:
+            if row["mesh_id"] in target:
+                part[row["query_id"]] = target[row["mesh_id"]]
+    lists = {p: [q for q, x in part.items() if x == p] for p in PARTS}
+    made = _make_split(fresh["name"], fresh["description"] + " Parts carried over from the earlier split (a catalog "
+                       "change); a mesh in several parts went whole into a non-test part.", fresh["seed"],
+                       lists["train"], lists["val"], lists["test"])
+    made.update({k: v for k, v in fresh.items() if k not in made})
+    return made
+
+
 def left_out_categories(held_out: set[str], relatives: dict[str, list[str]] | None) -> set[str]:
     """Return the categories that an unseen_categories training leaves out: the held-out ones and their near relatives.
 

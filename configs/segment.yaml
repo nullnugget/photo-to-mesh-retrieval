@@ -46,6 +46,20 @@ segment:
       processor_config.json: 95
     box_mask: single
     precision: fp16
+  photo_check:                       # SigLIP base (203 M parameters): image + texts -> which text fits the image. For the ABO
+                                     # photo cleaning: does an extra product image show the whole object, or only a part, a
+                                     # drawing, a swatch? A separate model: it never takes part in the search.
+                                     # Download: python scripts/00_download_weights.py --models photo_check
+    hub_repo: google/siglip-base-patch16-224
+    revision: 7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed
+    folder: weights/siglip/siglip-base-patch16-224
+    files:
+      config.json: 432
+      model.safetensors: 812672320
+      preprocessor_config.json: 368
+      special_tokens_map.json: 409
+      tokenizer.json: 2399357
+      tokenizer_config.json: 711
 
   # Detector text for the classes whose folder name is not plain English. Other classes use their
   # name with spaces for underscores ("ceiling_light" -> "ceiling light."). To be checked on the ABO photos.

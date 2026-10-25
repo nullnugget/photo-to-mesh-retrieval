@@ -1,7 +1,7 @@
-"""The weights download step: the pretrained detector and segmenter, from the Hugging Face Hub.
+"""The weights download step: the pretrained detector, segmenter, and photo check model, from the Hugging Face Hub.
 
 For each chosen model in `configs/segment.yaml` (by default `segment.detector` and `segment.segmenter`, the
-models the pipeline uses; `segment.segmenter_small` only on request), this step
+models the pipeline uses; `segment.segmenter_small` and `segment.photo_check` only on request), this step
 downloads the listed files from the model repository at the fixed commit ("revision") into the
 model's folder under `weights/`, and checks the size of every file. Later code loads the models
 only from these folders, so nothing is downloaded while the pipeline runs, and the exact weights
@@ -22,7 +22,7 @@ from src import paths
 from src.data.http import Fetcher
 
 HUB_URL = "https://huggingface.co"
-MODELS = ("detector", "segmenter", "segmenter_small")  # every model that can be downloaded
+MODELS = ("detector", "segmenter", "segmenter_small", "photo_check")  # every model that can be downloaded
 DEFAULT_MODELS = ("detector", "segmenter")  # the models the pipeline uses now
 
 

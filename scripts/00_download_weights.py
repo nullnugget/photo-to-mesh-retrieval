@@ -2,7 +2,8 @@
 
 The files and their fixed versions are listed in `configs/segment.yaml`; they go into
 `weights/grounding_dino/grounding-dino-tiny/` and `weights/sam2/sam2.1-hiera-large/` (about 1.6 GB).
-SAM 2.1 small (0.2 GB) is downloaded only on request, for comparisons and fast tests.
+SAM 2.1 small (0.2 GB) is downloaded only on request, for comparisons and fast tests; SigLIP base (0.8 GB,
+`weights/siglip/siglip-base-patch16-224/`) only on request, for the ABO photo check.
 Files that exist with the right size are skipped. The DINOv3 and DINOv2 backbones are placed by
 hand (see the README).
 
@@ -12,6 +13,7 @@ Usage (from the repository root):
     python scripts/00_download_weights.py                    # both models
     python scripts/00_download_weights.py --models segmenter        # only SAM 2.1 large
     python scripts/00_download_weights.py --models segmenter_small  # SAM 2.1 small, for comparisons and tests
+    python scripts/00_download_weights.py --models photo_check      # SigLIP base, for the ABO photo check
 """
 
 import argparse

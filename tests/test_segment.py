@@ -231,3 +231,12 @@ def test_photo_files_stay_in_the_photo_folder_when_the_class_changes():
     assert segment_photos.photo_folder(row["query_id"]) == "sofa"
     assert extract_features.sam_mask_file(row) == paths.MASKS_DIR / "pix3d" / "sofa" / "0851.png"
     assert extract_features.sam_query_file(Path("root"), row) == Path("root/pix3d_sam_queries/sofa/0851.png")
+
+
+def test_photo_check_texts_use_the_class_words():
+    from src.preprocess.photo_check import BAD_TEXTS, WHOLE_TEXTS, class_words
+
+    assert class_words("tv_stand") == "tv stand" and class_words("planter", {"planter": "plant pot"}) == "plant pot"
+    texts = [t.format(class_words("ceiling_light")) for t in WHOLE_TEXTS + BAD_TEXTS]
+    assert all("ceiling light" in t and t == t.lower() for t in texts)  # lower case, as SigLIP's tokenizer makes them
+    assert "a product photo of a ceiling light with its measurements" in texts[:len(WHOLE_TEXTS)]  # measurements: a whole photo

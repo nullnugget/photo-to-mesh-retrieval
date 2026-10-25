@@ -53,7 +53,7 @@ def fold_plan(cfg: dict, split: str, datasets: list[str]) -> tuple[str, int]:
 
 
 def run_folds(cfg: dict, split: str, tag: str, folds: list[int] | None = None, datasets: list[str] | None = None,
-              backbone: str | None = None, mini: bool = False) -> dict | None:
+              backbone: str | None = None, mini: bool = False, gallery_only: list[str] | None = None) -> dict | None:
     """Train one setting on the given folds; pool and record when every fold has a run with this tag.
 
     Args:
@@ -61,7 +61,7 @@ def run_folds(cfg: dict, split: str, tag: str, folds: list[int] | None = None, d
         split: The split to divide, for example "unseen_meshes".
         tag: The name of this cross-validation; it finds the fold runs again (required).
         folds: Fold numbers to train now (None = all). A stopped cross-validation continues with the missing folds.
-        datasets, backbone, mini: As in `train_heads.run`.
+        datasets, backbone, mini, gallery_only: As in `train_heads.run`.
 
     Returns:
         The pooled record, or None if folds are still missing.
@@ -81,7 +81,8 @@ def run_folds(cfg: dict, split: str, tag: str, folds: list[int] | None = None, d
             raise ValueError(f"fold {k} does not exist (1 to {count})")
     for k in folds:
         print(f"\n=== fold {k} of {count} ===", flush=True)
-        train_heads.run(cfg, split=fold_name(split, k), datasets=datasets, backbone=backbone, tag=tag, mini=mini)
+        train_heads.run(cfg, split=fold_name(split, k), datasets=datasets, backbone=backbone, tag=tag, mini=mini,
+                        gallery_only=gallery_only)
         torch.cuda.empty_cache()
     try:
         return pool_and_record(split, tag, count, datasets, backbone, mini)

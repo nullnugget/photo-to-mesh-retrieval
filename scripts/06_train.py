@@ -18,6 +18,9 @@ against every training mesh of both); the val photos of each dataset are searche
 their own dataset. An unseen_categories training leaves out the near relatives of its held-out
 categories (`data.splits.unseen_categories.relatives`).
 
+Gallery only (--gallery-only abo, with --datasets pix3d abo): the ABO training meshes join the training
+gallery as extra negatives, but no ABO photo trains; the gallery is the same as in the joint run.
+
 The logic is in `src/pipeline/train_heads.py` and `src/train/trainer.py`.
 
 Usage (from the repository root):
@@ -28,6 +31,7 @@ Usage (from the repository root):
     python scripts/06_train.py --split unseen_meshes --folds all --tag cvbase       # 5 trainings, then the pooled result
     python scripts/06_train.py --split unseen_categories --folds all --tag cvcat     # one training per category, then the pooled result
     python scripts/06_train.py --split unseen_meshes --datasets pix3d abo --folds all --tag cvjoint   # joint: Pix3D folds + ABO folds
+    python scripts/06_train.py --split unseen_meshes --datasets pix3d abo --gallery-only abo --folds all --tag cvneg   # ABO meshes as negatives only
 """
 
 import argparse
@@ -50,6 +54,8 @@ def main() -> None:
     parser.add_argument("--tag", help="extra word for the run name")
     parser.add_argument("--mini", action="store_true", help="5 %% of the training photos, 1 epoch, into test_outputs/")
     parser.add_argument("--folds", nargs="+", help="cross-validation: 'all' or fold numbers (needs --tag)")
+    parser.add_argument("--gallery-only", nargs="+", choices=extract_features.DATASETS,
+                        help="datasets whose training meshes join the gallery but whose photos do not train")
     add_config_args(parser)
     args = parser.parse_args()
     cfg = config_from_args(args)
@@ -57,10 +63,11 @@ def main() -> None:
         if not args.tag:
             parser.error("--folds needs --tag (the name of the cross-validation)")
         folds = None if args.folds == ["all"] else [int(k) for k in args.folds]
-        cross_validate.run_folds(cfg, args.split, args.tag, folds=folds, datasets=args.datasets, backbone=args.backbone, mini=args.mini)
+        cross_validate.run_folds(cfg, args.split, args.tag, folds=folds, datasets=args.datasets, backbone=args.backbone, mini=args.mini,
+                                 gallery_only=args.gallery_only)
         return
     train_heads.run(cfg, split=args.split, datasets=args.datasets, backbone=args.backbone,
-                    tag=args.tag, mini=args.mini)
+                    tag=args.tag, mini=args.mini, gallery_only=args.gallery_only)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,8 @@ Steps:
 
 1. the training photos of the split's train part (`src/data/datasets.py`), the training gallery
    (the meshes of these photos), and the full gallery and the val photos of each dataset (stored
-   features, `src/train/trainer.py`); an unseen_categories training leaves out the photos of its
+   features, `src/train/trainer.py`); a gallery-only dataset gives its training meshes but no training
+   photos (`gallery_only_split`); an unseen_categories training leaves out the photos of its
    held-out categories and their near relatives in every dataset (`data.splits.unseen_categories.relatives`);
 2. the frozen backbone for the changed training images, the heads, AdamW, and the learning-rate
    schedule (warm-up, then cosine);
@@ -91,8 +92,21 @@ def held_out_categories(datasets: list[str], split: str) -> set[str]:
     return held
 
 
+def gallery_only_split(photos: list, gallery_only: list[str] | None) -> tuple[list, set[str]]:
+    """The training photos without those of the gallery-only datasets, and the training gallery's mesh ids.
+
+    A gallery-only dataset gives its training meshes to the training gallery (extra negatives for every
+    training photo) but trains no photo. The gallery is the same as with all photos, so a gallery-only
+    run differs from the joint run only in the photos it trains.
+    """
+    mesh_ids = {p.mesh_id for p in photos}
+    if gallery_only:
+        photos = [p for p in photos if p.dataset not in gallery_only]
+    return photos, mesh_ids
+
+
 def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None, backbone: str | None = None,
-        tag: str | None = None, mini: bool = False, device: str = "cuda") -> dict:
+        tag: str | None = None, mini: bool = False, device: str = "cuda", gallery_only: list[str] | None = None) -> dict:
     """Train the heads on one split; return the content of metrics.json.
 
     Args:
@@ -103,9 +117,14 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
         tag: Extra word for the run name.
         mini: True = 5 % of the training photos, 1 epoch, outputs in test_outputs/train_mini/.
         device: "cuda" or "cpu".
+        gallery_only: Datasets (of `datasets`) whose training meshes join the training gallery but whose
+            photos do not train (`gallery_only_split`); their val photos are still measured.
     """
     train_cfg, data_cfg = cfg["train"], cfg["data"]
     datasets = datasets or list(data_cfg["datasets"])
+    gallery_only = list(gallery_only or [])
+    if not set(gallery_only) < set(datasets):
+        raise ValueError(f"gallery_only {gallery_only} must be some, not all, of the datasets {datasets}")
     backbone = backbone or cfg["backbone"]["name"]
     recipe = cfg["backbone"]["feature_recipe"]
     epochs = 1 if mini else train_cfg["epochs"]
@@ -121,9 +140,10 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
     if mini:
         keep = np.random.default_rng(train_cfg["seed"]).choice(len(photos), size=max(1, int(len(photos) * train_cfg["mini_fraction"])), replace=False)
         photos = [photos[i] for i in sorted(keep)]
+    photos, gallery_mesh_ids = gallery_only_split(photos, gallery_only)
     features_root = features_output_root(False)  # the real feature files (the mini run reads them; it writes nothing there)
     galleries, feature_files = trainer.load_galleries(datasets, backbone, recipe, category_index, features_root, device)
-    gallery = trainer.training_gallery(galleries, {p.mesh_id for p in photos})
+    gallery = trainer.training_gallery(galleries, gallery_mesh_ids)
     mesh_index = {m: i for i, m in enumerate(gallery.mesh_ids)}
     val_sets = trainer.load_val_sets(datasets, split, backbone, recipe, galleries, category_index,
                                      cfg["backbone"]["zero_shot"], features_root, device)
@@ -147,6 +167,8 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
     run = runs.create_run(cfg, label, backbone, "_".join(p for p in (split, tag) if p), runs_dir=out["runs"], checkpoints_dir=out["checkpoints"])
     print(f"run {run['run_name']}: {len(photos)} training photos, training gallery {len(gallery.mesh_ids)} meshes, "
           f"{len(loader)} steps per epoch, {epochs} epochs; heads {parameter_counts(heads)['total']:,} parameters", flush=True)
+    if gallery_only:
+        print(f"gallery only (meshes as extra negatives, no training photos): {', '.join(gallery_only)}", flush=True)
     if photo_report["left_out_categories"]:
         print("left out of training (held-out categories and near relatives): "
               + ", ".join(f"{k} {v}" for k, v in photo_report["left_out_categories"].items()), flush=True)
@@ -196,6 +218,7 @@ def run(cfg: dict, split: str = "seen_meshes", datasets: list[str] | None = None
         "run_name": run["run_name"],
         "split": split,
         "datasets": datasets,
+        "gallery_only": gallery_only,
         "backbone": backbone,
         "recipe": recipe,
         "mix_weight": train_cfg["scoring"]["mix_weight"],

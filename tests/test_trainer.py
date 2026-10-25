@@ -101,3 +101,16 @@ def test_a_worker_gets_all_cores_and_one_thread():
     finally:
         os.sched_setaffinity(0, cores)
         torch.set_num_threads(threads)
+
+
+def test_gallery_only_keeps_the_meshes_and_drops_the_photos():
+    from src.data.datasets import TrainingPhoto
+    from src.pipeline.train_heads import gallery_only_split
+
+    photos = [TrainingPhoto("pix3d/chair/0001", "pix3d", "chair", "pix3d/chair/A", ()),
+              TrainingPhoto("abo/sofa/x1", "abo", "sofa", "abo/sofa/B", ()),
+              TrainingPhoto("abo/sofa/x2", "abo", "sofa", "abo/sofa/C", ())]
+    kept, meshes = gallery_only_split(photos, ["abo"])
+    assert [p.query_id for p in kept] == ["pix3d/chair/0001"]
+    assert meshes == {"pix3d/chair/A", "abo/sofa/B", "abo/sofa/C"}  # the same gallery as the joint run
+    assert gallery_only_split(photos, None) == (photos, meshes)

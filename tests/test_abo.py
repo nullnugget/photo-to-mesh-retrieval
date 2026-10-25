@@ -77,3 +77,20 @@ def test_photo_entry_needs_a_single_geometry_group():
     assert photo_entry(photo, groups) is None  # two different geometries: no single answer
     photo.mesh_ids = ["abo/sofa/missing"]
     assert photo_entry(photo, groups) is None
+
+
+def test_main_image_ids_and_the_photo_check_rule(tmp_path):
+    import gzip
+    import json
+
+    from src.data.abo import main_image_ids
+    from src.pipeline.check_photos import EXTRA, MAIN, is_left_out
+
+    listings = [{"3dmodel_id": "M1", "main_image_id": "a", "other_image_id": ["b", "c"]},
+                {"main_image_id": "x", "other_image_id": ["y"]}]  # no 3D model: not one of ours
+    path = tmp_path / "listings_0.json.gz"
+    with gzip.open(path, "wt") as f:
+        f.write("\n".join(json.dumps(listing) for listing in listings) + "\n")
+    assert main_image_ids([path]) == {"a"}
+    assert is_left_out(EXTRA, 0.41, 0.4) and not is_left_out(EXTRA, 0.4, 0.4)
+    assert not is_left_out(MAIN, 0.99, 0.4)  # a main image is never left out

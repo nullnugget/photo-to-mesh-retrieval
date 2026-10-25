@@ -86,6 +86,9 @@ segment:
       coverage_below: 0.5            # ... and it covers less than half of the coloured pixels in the box
       repair_white_share_below: 0.5  # a SAM candidate replaces it if under 50 % of its pixels are near-white ...
       repair_coverage_above: 0.6     # ... and it covers at least 60 % of the coloured pixels; else background_mask
+    max_bad_score: 0.4               # photo check (scripts/11_check_photos.py, SigLIP): an extra image (not a listing's main
+                                     # image) above this bad score shows a part, a drawing, or a swatch, and is left out.
+                                     # Chosen on 444 reviewed extra images: about 88 % of the close-ups go, 1.6 % of the good photos
 
   # Quality check against reference masks (Pix3D).
   check:

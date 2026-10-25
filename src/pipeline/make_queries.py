@@ -17,7 +17,8 @@ Where the photos, masks, and meshes come from:
   the twin groups of the merge stage (`10_find_twins.py --dataset pix3d --stage merge`) are one row
   each: their photos show the group's representative and take the group's class (`merge_twins`).
 - ABO: the photos that the segment step kept (`data/derived/masks/abo_segment_results.csv`, verdict
-  "kept"), with their SAM masks. Each photo's mesh is the gallery entry of its geometry group
+  "kept") and the photo check did not leave out (`check_photos`: an extra image that shows only a part,
+  a drawing, or a swatch), with their SAM masks. Each photo's mesh is the gallery entry of its geometry group
   (`catalog_abo_meshes.photo_entry`), so that colour variants of one geometry are one answer. The mesh
   rows are the ABO rows that the catalog stage of the download step wrote, all of them: a mesh without
   a kept photo stays in the gallery (a distractor that no photo asks for, like a new product), and its
@@ -42,7 +43,7 @@ from pathlib import Path
 
 from src import paths
 from src.data import abo, catalog, pix3d, splits
-from src.pipeline import catalog_abo_meshes, download_abo, find_twins, segment_photos
+from src.pipeline import catalog_abo_meshes, check_photos, download_abo, find_twins, segment_photos
 from src.preprocess.queries import FAILED, QueryJob, make_query_images
 
 DATASETS = ("pix3d", "abo")
@@ -129,8 +130,9 @@ def merge_twins(photos: list, meshes: list, twins: dict[str, tuple[str, str]]) -
     return photos, kept
 
 
-def _pix3d_items(data_cfg: dict, mini: bool) -> DatasetItems:
+def _pix3d_items(cfg: dict, mini: bool) -> DatasetItems:
     """List the Pix3D photos and meshes (twin groups merged, `merge_twins`), and the v1 test part."""
+    data_cfg = cfg["data"]
     annotations = pix3d.load_annotations()
     photos, meshes = merge_twins(pix3d.photo_records(annotations), pix3d.mesh_records(annotations),
                                  find_twins.read_twin_groups(pix3d.DATASET))
@@ -145,8 +147,9 @@ def _pix3d_items(data_cfg: dict, mini: bool) -> DatasetItems:
     return DatasetItems(photos, meshes, len(annotations), fixed_test)
 
 
-def _abo_items(data_cfg: dict, mini: bool) -> DatasetItems:
-    """List the ABO photos that the segment step kept, their gallery entries, and all ABO meshes."""
+def _abo_items(cfg: dict, mini: bool) -> DatasetItems:
+    """List the ABO photos that the segment step kept and the photo check did not leave out (an extra image
+    above `segment.cleaning.max_bad_score`, `check_photos`), their gallery entries, and all ABO meshes."""
     _, photos = abo.read_manifest(paths.ABO_MANIFEST_DIR)
     groups = catalog_abo_meshes.read_geometry_groups(paths.ABO_MANIFEST_DIR)
     by_id = {p.image_id: p for p in photos}
@@ -155,9 +158,20 @@ def _abo_items(data_cfg: dict, mini: bool) -> DatasetItems:
 
     masks_root = segment_photos.output_root(mini)
     results = catalog.read_table(segment_photos.results_file(abo.DATASET, masks_root))
-    records = []
+    if check_photos.results_file().exists():
+        checked = check_photos.read_results()
+    elif mini:
+        checked = {}
+        print("no photo check results: a mini run keeps every photo of the segment step")
+    else:
+        raise FileNotFoundError(f"{check_photos.results_file()} is missing: run scripts/11_check_photos.py first")
+    max_bad_score = cfg["segment"]["cleaning"]["max_bad_score"]
+    records, left_out = [], 0
     for row in results:
         if row["verdict"] != segment_photos.KEPT:
+            continue
+        if row["photo_id"] in checked and check_photos.is_left_out(*checked[row["photo_id"]], max_bad_score):
+            left_out += 1
             continue
         photo = by_id[row["photo_id"].split("/")[-1]]
         entry = catalog_abo_meshes.photo_entry(photo, groups)  # never None: the segment step skipped those photos
@@ -171,6 +185,7 @@ def _abo_items(data_cfg: dict, mini: bool) -> DatasetItems:
             truncated=None, occluded=None, slightly_occluded=None,
         ))
     records.sort(key=lambda r: r.query_id)
+    print(f"photo check: {left_out} extra images left out (bad score above {max_bad_score})")
     if mini:
         records = _first_per_category(records, MINI_PHOTOS_PER_CATEGORY)
     gallery = [GalleryMesh(m["mesh_id"], m["category"], m["mesh_path"], int(m["num_mesh_variants"])) for m in meshes]
@@ -239,7 +254,7 @@ def run(dataset: str, cfg: dict, mini: bool = False, overwrite: bool = False, wo
     start = time.perf_counter()
 
     # 1. The photos and meshes of the dataset.
-    items = _ITEM_FUNCTIONS[dataset](data_cfg, mini)
+    items = _ITEM_FUNCTIONS[dataset](cfg, mini)
     print(f"{dataset}: {len(items.photos)} photos to prepare{' (mini)' if mini else ''}")
 
     # 2. The query images, made in parallel.

@@ -158,6 +158,22 @@ def read_model_listings(paths: list[Path]) -> dict[str, dict]:
     return combined
 
 
+def main_image_ids(paths: list[Path]) -> set[str]:
+    """The image ids that are the main image of a listing with a 3D model (the photo a shop shows first).
+
+    The other images of a listing are extra images: other views, but also close-ups, drawings, and
+    swatches (`src/preprocess/photo_check.py`). A main image shows the whole product.
+    """
+    main: set[str] = set()
+    for path in sorted(paths):
+        with gzip.open(path, "rt") as f:
+            for line in f:
+                listing = json.loads(line)
+                if listing.get("3dmodel_id") and listing.get("main_image_id"):
+                    main.add(listing["main_image_id"])
+    return main
+
+
 def class_of(product_type: str, leaf: str, rules: list[dict]) -> str | None:
     """Apply the class rules: return the class of the first rule that matches, or None.
 

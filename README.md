@@ -75,6 +75,8 @@ Each pipeline step is a Python script in `scripts/`. Run it from the repository 
 | Gallery index of a trained checkpoint (embedded once; checked against the validation R@1) | `scripts/07_build_index.py --run <training run>` | available |
 | Evaluation (zero-shot): R@1, R@5, R@10, Cat@1, macro R@1 on the test-free photos or a split part | `scripts/08_evaluate.py --dataset pix3d` | available (the test parts need `--allow-test`) |
 | Evaluation (trained): the same metrics with the mixed trained and zero-shot score | `scripts/08_evaluate.py --dataset pix3d --run <training run> --photos val` | available (the test parts need `--allow-test`) |
+| Patch store for re-ranking: the 196 patch vectors of every render and query image, reduced by PCA to 128 numbers | `scripts/12_extract_patches.py` | available |
+| Re-ranking method 1 (no training): the first 10 meshes of every photo re-ordered by a patch-by-patch comparison, measured on the folds of a cross-validation | `scripts/13_rerank.py --tag <tag>` (checks: `--stages gallery dimcheck`) | available |
 | Other steps | n/a | to be written |
 
 ## Data and model credits

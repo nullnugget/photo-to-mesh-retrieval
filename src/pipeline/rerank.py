@@ -15,7 +15,8 @@ Stages:
 5. dimcheck: the cost of the PCA reduction, raw 768 numbers against the stored reduction (a sample; `dim_check`).
 
 Outputs: `data/derived/rerank/<tag>/` (`<dataset>_<set>_candidates.npz`, `<dataset>_<set>_method1.npz`,
-`method1_report.json`, `gallery_report.json`, `dimcheck_report.json`).
+`method1_v<views>_report.json`, `gallery_report.json`, `dimcheck_report.json`; the method-1 files carry
+the number of views per candidate, `_v<views>`, so that runs with different view counts stay side by side).
 """
 
 import json
@@ -30,11 +31,12 @@ from src.retrieval import candidates as cand
 from src.retrieval.metrics import paired_difference
 from src.retrieval.patch_rerank import patch_scores, reranked_ranks
 
-PHOTOS_PER_BLOCK = 32  # 32 photos x 10 candidates x 5 views x 196 x 196 similarities: about 1.5 GB on the GPU
+VIEWS_PER_BLOCK = 160  # photos per block = 160 // views: 32 photos x 10 candidates x 5 views x 196 x 196 similarities
+                       # is about 1.5 GB on the GPU
 
 
-def method1_file(tag: str, dataset: str, query_set: str):
-    return cand.RERANK_DIR / tag / f"{dataset}_{query_set}_method1.npz"
+def method1_file(tag: str, dataset: str, query_set: str, views: int):
+    return cand.RERANK_DIR / tag / f"{dataset}_{query_set}_method1_v{views}.npz"
 
 
 def best_views(view_score: np.ndarray, top: int, views: int) -> np.ndarray:
@@ -57,8 +59,9 @@ def method1_scores(cfg: dict, tag: str, dataset: str, query_set: str, device: st
     meshes = lists["top"][:, :top]
     views = best_views(lists["view_score"], top, m1["views"])  # (N, top, V)
     out = {f"patch_{d}": np.zeros((len(meshes), top), np.float32) for d in dims}
-    for start in tqdm(range(0, len(meshes), PHOTOS_PER_BLOCK), desc=f"{dataset}_{query_set}", unit="block"):
-        block = slice(start, start + PHOTOS_PER_BLOCK)
+    per_block = max(1, VIEWS_PER_BLOCK // m1["views"])
+    for start in tqdm(range(0, len(meshes), per_block), desc=f"{dataset}_{query_set}", unit="block"):
+        block = slice(start, start + per_block)
         m = np.broadcast_to(meshes[block][..., None], views[block].shape)
         photo = torch.from_numpy(np.asarray(photos.vectors[photo_rows[block]])).to(device)
         photo_object = torch.from_numpy(np.asarray(photos.object[photo_rows[block]]) >= threshold).to(device)
@@ -93,7 +96,7 @@ def report(cfg: dict, tag: str, datasets: list[str]) -> dict:
     for dataset in datasets:
         for query_set in cand.QUERY_SETS[dataset]:
             lists = cand.read_candidates(tag, dataset, query_set)
-            with np.load(method1_file(tag, dataset, query_set)) as data:
+            with np.load(method1_file(tag, dataset, query_set, m1["views"])) as data:
                 sets[f"{dataset}_{query_set}"] = {**lists, **{k: data[k] for k in data.files}}
     folds = np.unique(np.concatenate([s["fold"] for s in sets.values()]))
     result = {"tag": tag, "top": top, "views": m1["views"], "weights": weights, "dims": {}}
@@ -122,7 +125,7 @@ def report(cfg: dict, tag: str, datasets: list[str]) -> dict:
             print(f"  {name:24s} photos {r['photos']:6d}  stage 1 R@1 {100 * r['stage1_R@1']:5.1f}  -> method 1 {100 * r['method1_R@1']:5.1f}  "
                   f"({100 * dd['difference']:+.1f}, {100 * dd['low']:+.1f} to {100 * dd['high']:+.1f})  "
                   f"R@{top} limit {100 * r[f'stage1_R@{top}']:.1f}")
-    target = cand.RERANK_DIR / tag / "method1_report.json"
+    target = cand.RERANK_DIR / tag / f"method1_v{m1['views']}_report.json"
     target.write_text(json.dumps(result, indent=2) + "\n")
     print(f"-> {target.relative_to(paths.ROOT)}")
     return result
@@ -257,7 +260,7 @@ def run(cfg: dict, stages: list[str], split: str, tag: str, datasets: list[str],
         for dataset in datasets:
             for query_set in cand.QUERY_SETS[dataset]:
                 out = method1_scores(cfg, tag, dataset, query_set, device)
-                np.savez(method1_file(tag, dataset, query_set), **out)
+                np.savez(method1_file(tag, dataset, query_set, cfg["rerank"]["method1"]["views"]), **out)
     if "report" in stages:
         report(cfg, tag, datasets)
     if "gallery" in stages:

@@ -100,7 +100,14 @@ def make_query_image(job: QueryJob) -> dict:
 
 
 def _init_worker() -> None:
-    """Run once in each worker process: one thread for torch, because the processes already run in parallel."""
+    """Run once in each worker process: one thread for torch, because the processes already run in parallel.
+
+    The worker also sets all CPU cores again, as `datasets.loader_worker_init` does: when numpy (MKL) is
+    loaded before torch, a forked worker starts bound to 2 logical CPUs, and then all workers share these
+    2 CPUs (measured: 8 workers made 3.6 images per second bound, 14 on all 16 CPUs).
+    """
+    if hasattr(os, "sched_setaffinity"):  # Linux; other systems do not bind this way
+        os.sched_setaffinity(0, range(os.cpu_count()))
     torch.set_num_threads(1)
 
 

@@ -5,6 +5,7 @@ import csv
 import numpy as np
 import pytest
 
+from src import paths
 from src.pipeline import render_meshes
 
 
@@ -34,3 +35,10 @@ def test_skipped_meshes_keep_their_earlier_results(tmp_path):
         assert len(list(csv.DictReader(f))) == 2
     merged = render_meshes._merge_results(path, [{"mesh_id": "c", "status": "done", "overflow_retries": 0, **row}])
     assert [r["mesh_id"] for r in merged] == ["a", "b", "c"]  # a run on other meshes keeps the earlier rows
+
+
+def test_renders_of_another_size_go_to_their_own_folder():
+    assert render_meshes.output_root(False) == paths.RENDERS_DIR
+    assert render_meshes.output_root(False, paths.size_suffix(448, 224)) == paths.DERIVED_DIR / "renders_448"
+    assert render_meshes.output_root(True, "_448").name == "renders_448"
+    assert paths.size_suffix(224, 224) == ""

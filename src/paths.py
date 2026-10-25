@@ -81,6 +81,21 @@ def queries_report_file(dataset: str, catalog_dir: Path = CATALOG_DIR) -> Path:
     return catalog_dir / f"{dataset}_queries_report.json"
 
 
+def size_suffix(size: int, main_size: int) -> str:
+    """Return the folder suffix of images made at another side length than the main one (`data.image_size`).
+
+    "" at the main size, else "_<size>": the same images at 448 pixels go to `renders_448/`, `queries_448/`,
+    and `masks/<dataset>_sam_queries_448/`, with the same subfolders and file names. The folders of the
+    main size stay as they are.
+    """
+    return "" if size == main_size else f"_{size}"
+
+
+def sized(folder: Path, suffix: str) -> Path:
+    """Return the folder of the same images at another size, e.g. `renders` + "_448" -> `renders_448`."""
+    return folder.with_name(folder.name + suffix)
+
+
 def resolve(path: str | Path) -> Path:
     """Return an absolute path. A relative path is taken relative to the repository root."""
     path = Path(path)

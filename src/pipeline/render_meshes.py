@@ -4,8 +4,12 @@ For every mesh row of the dataset in the catalog (`data/derived/catalog/meshes.c
 
 1. loads the mesh file, turns its front to +Z (`render.front_axis`), and scales it to the unit sphere;
 2. renders it from the 25 cameras of the rig with the active light setup (`render.lighting`);
-3. saves the cropped 224 x 224 views as `view_00.png` ... `view_24.png` in the mesh's `render_dir`
-   (for example `data/derived/renders/pix3d/chair/IKEA_POANG_2/`).
+3. saves the cropped views (`render.output_size`, 224 x 224) as `view_00.png` ... `view_24.png` in the
+   mesh's `render_dir` (for example `data/derived/renders/pix3d/chair/IKEA_POANG_2/`).
+
+Views of another output size than the main image size (`data.image_size`) go to a folder of their own,
+with the same subfolders, for example `--set render.output_size=448` into `data/derived/renders_448/`
+(`paths.size_suffix`). The renders of the main size are not touched.
 
 Safe to stop and start again:
 
@@ -54,9 +58,12 @@ class RenderSettingsChanged(RuntimeError):
     """The existing renders were made with other settings (see `render_config.yaml`)."""
 
 
-def output_root(mini: bool) -> Path:
-    """Return the folder that holds the renders: the real one, or a test folder for a mini run."""
-    return paths.TEST_OUTPUTS_DIR / "render_mini" / "renders" if mini else paths.RENDERS_DIR
+def output_root(mini: bool, suffix: str = "") -> Path:
+    """Return the folder that holds the renders: the real one, or a test folder for a mini run.
+
+    `suffix` (`paths.size_suffix`) selects the folder of another output size, for example `renders_448`.
+    """
+    return paths.sized(paths.TEST_OUTPUTS_DIR / "render_mini" / "renders" if mini else paths.RENDERS_DIR, suffix)
 
 
 def render_folder(mesh_row: dict, root: Path) -> Path:
@@ -127,7 +134,7 @@ def run(dataset: str, cfg: dict, mini: bool = False, overwrite: bool = False, de
 
     Args:
         dataset: "pix3d" (or "abo", once the ABO meshes are in the catalog).
-        cfg: The merged settings; the step reads `cfg["render"]`.
+        cfg: The merged settings; the step reads `cfg["render"]` (and `data.image_size`, the main size).
         mini: True = 2 meshes per category, into test_outputs/render_mini/.
         overwrite: True = render every mesh again, also with changed settings.
         device: "cuda" or "cpu".
@@ -137,7 +144,7 @@ def run(dataset: str, cfg: dict, mini: bool = False, overwrite: bool = False, de
         RenderSettingsChanged: If earlier renders used other settings and `overwrite` is False.
     """
     render_cfg = cfg["render"]
-    root = output_root(mini)
+    root = output_root(mini, paths.size_suffix(render_cfg["output_size"], cfg["data"]["image_size"]))
     meshes = [m for m in read_table(paths.MESHES_CSV) if m["dataset"] == dataset]
     if not meshes:
         raise ValueError(f"the catalog has no mesh rows of dataset {dataset!r}")

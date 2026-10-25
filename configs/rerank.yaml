@@ -24,3 +24,9 @@ rerank:
     photos: 500                      # random val photos per dataset (SAM query images)
     dims: [64, 128]                  # compared with the raw 768
     seed: 1
+  sizecheck:                         # method 1 with patches of larger images (raw 768 numbers, a sample; a check)
+    sizes: [224, 336, 448]           # side lengths that the backbone sees: 196, 441, 784 patches per image
+    source_size: 448                 # the other sizes are shrunk in memory from the images of this size; the main
+                                     # size (data.image_size) comes from its own folders
+    photos: 500                      # random val photos per dataset (SAM query images); with the seed of dimcheck,
+    seed: 1                          # the same photos, so that its 768-number row is repeated at 224

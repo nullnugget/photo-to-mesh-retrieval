@@ -41,8 +41,8 @@ from src.data.catalog import read_table
 from src.models.backbones import FeatureExtractor, object_masks
 from src.models.feature_store import QUERIES, RENDERS, read_features
 from src.models.patch_store import CovarianceSum, PatchProjection, PatchWriter, patch_files, projection_file
-from src.pipeline.extract_features import (CATALOG_IMAGES, DATASETS, QUERY_SETS, ImageFiles, feature_sets,
-                                           render_files, sam_query_file)
+from src.pipeline.extract_features import (CATALOG_IMAGES, DATASETS, QUERY_SETS, ImageFiles, catalog_query_file,
+                                           feature_sets, render_files, sam_query_file)
 from src.runs import git_state
 
 MINI_MESHES, MINI_QUERIES, MINI_FIT = 4, 32, 64
@@ -53,10 +53,12 @@ def output_root(mini: bool) -> Path:
     return paths.TEST_OUTPUTS_DIR / "extract_patches_mini" if mini else paths.PATCHES_DIR
 
 
-def set_images(backbone: str, dataset: str, feature_set: str, mini: bool = False) -> tuple[str, dict, list[Path], int]:
+def set_images(backbone: str, dataset: str, feature_set: str, mini: bool = False,
+               suffix: str = "") -> tuple[str, dict, list[Path], int]:
     """Return (kind, labels, image files, views) of one set, in the row order of its feature file.
 
-    For renders the files are mesh by mesh, view by view; views is 1 for query sets.
+    For renders the files are mesh by mesh, view by view; views is 1 for query sets. `suffix`
+    (`paths.size_suffix`): the files of the same images at another size (for example `renders_448/`).
     """
     table = read_features(paths.features_file(backbone, dataset, feature_set))
     labels = dict(table.labels)
@@ -66,13 +68,13 @@ def set_images(backbone: str, dataset: str, feature_set: str, mini: bool = False
     if table.kind == RENDERS:
         views = table.parts["cls"].shape[1]
         by_id = {m["mesh_id"]: m for m in read_table(paths.MESHES_CSV) if m["dataset"] == dataset}
-        return RENDERS, labels, render_files([by_id[m] for m in labels["mesh_id"]], views), views
+        return RENDERS, labels, render_files([by_id[m] for m in labels["mesh_id"]], views, paths.sized(paths.RENDERS_DIR, suffix)), views
     by_id = {q["query_id"]: q for q in read_table(paths.QUERIES_CSV) if q["dataset"] == dataset}
     rows = [by_id[q] for q in labels["query_id"]]
     if QUERY_SETS[dataset][feature_set] == CATALOG_IMAGES:
-        files = [paths.resolve(row["query_path"]) for row in rows]
+        files = [catalog_query_file(row, suffix) for row in rows]
     else:
-        files = [sam_query_file(paths.MASKS_DIR, row) for row in rows]
+        files = [sam_query_file(paths.MASKS_DIR, row, suffix) for row in rows]
     missing = [f for f in files if not f.exists()]
     if missing:
         raise FileNotFoundError(f"{len(missing)} query images are missing, for example {missing[0]}")

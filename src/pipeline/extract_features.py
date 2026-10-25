@@ -78,11 +78,21 @@ def sam_queries_root(mini: bool) -> Path:
     return paths.TEST_OUTPUTS_DIR / "extract_features_mini" / "masks" if mini else paths.MASKS_DIR
 
 
-def sam_query_file(root: Path, query_row: dict) -> Path:
+def sam_query_file(root: Path, query_row: dict, suffix: str = "") -> Path:
     """Return the query image made with the SAM mask, e.g. <root>/pix3d_sam_queries/chair/0001.png: the folder
-    and name of the query image (the photo's own folder, `segment_photos.photo_folder`, not its class)."""
+    and name of the query image (the photo's own folder, `segment_photos.photo_folder`, not its class).
+
+    `suffix` (`paths.size_suffix`): the same image at another size, e.g. <root>/pix3d_sam_queries_448/chair/0001.png.
+    """
     query_path = Path(query_row["query_path"])
-    return root / f"{query_row['dataset']}_sam_queries" / query_path.parent.name / query_path.name
+    return root / f"{query_row['dataset']}_sam_queries{suffix}" / query_path.parent.name / query_path.name
+
+
+def catalog_query_file(query_row: dict, suffix: str = "") -> Path:
+    """Return the catalog query image of a row (`query_path`); with `suffix` (`paths.size_suffix`), the same
+    image at another size, e.g. `data/derived/queries_448/pix3d/chair/0001.png`."""
+    query_path = paths.resolve(query_row["query_path"])
+    return paths.sized(paths.QUERIES_DIR, suffix) / query_path.relative_to(paths.QUERIES_DIR)
 
 
 def sam_mask_file(query_row: dict) -> Path:
@@ -133,13 +143,14 @@ class ImageFiles(Dataset):
         return np.asarray(Image.open(self.files[index]).convert("RGB"))
 
 
-def render_files(meshes: list[dict], views: int) -> list[Path]:
-    """Return the view files of all meshes, mesh by mesh, in view order.
+def render_files(meshes: list[dict], views: int, root: Path = paths.RENDERS_DIR) -> list[Path]:
+    """Return the view files of all meshes, mesh by mesh, in view order (`root`: the renders of another size,
+    for example `data/derived/renders_448`).
 
     Raises:
         FileNotFoundError: If a view is missing (the render step must be complete first).
     """
-    files = [render_folder(m, paths.RENDERS_DIR) / VIEW_NAME.format(v) for m in meshes for v in range(views)]
+    files = [render_folder(m, root) / VIEW_NAME.format(v) for m in meshes for v in range(views)]
     missing = [f for f in files if not f.exists()]
     if missing:
         raise FileNotFoundError(f"{len(missing)} render views are missing, for example {missing[0]}; run the render step first")
@@ -271,7 +282,7 @@ def run(dataset: str, cfg: dict, backbone: str | None = None, sets: list[str] | 
                 files = [sam_query_file(sam_queries_root(mini), row) for row in rows]
                 source = "query images cut out with the SAM masks"
             else:
-                files = [paths.resolve(row["query_path"]) for row in rows]
+                files = [catalog_query_file(row) for row in rows]
                 source = "catalog query images" + (" (Pix3D masks)" if dataset == "pix3d" else " (SAM masks)")
 
         if device == "cuda":

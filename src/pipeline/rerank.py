@@ -13,9 +13,10 @@ Stages:
 
 4. gallery: the patch comparison as a stage 1, against every mesh (a sample of photos; `gallery_test`).
 5. dimcheck: the cost of the PCA reduction, raw 768 numbers against the stored reduction (a sample; `dim_check`).
+6. sizecheck: method 1 with the patches of larger images (224, 336, 448 pixels; a sample; `size_check`).
 
 Outputs: `data/derived/rerank/<tag>/` (`<dataset>_<set>_candidates.npz`, `<dataset>_<set>_method1.npz`,
-`method1_v<views>_report.json`, `gallery_report.json`, `dimcheck_report.json`; the method-1 files carry
+`method1_v<views>_report.json`, `gallery_report.json`, `dimcheck_report.json`, `sizecheck_report.json`; the method-1 files carry
 the number of views per candidate, `_v<views>`, so that runs with different view counts stay side by side).
 """
 
@@ -253,6 +254,115 @@ def dim_check(cfg: dict, tag: str, datasets: list[str], device: str = "cuda") ->
     return result
 
 
+SIZECHECK_PHOTOS_PER_BLOCK = 8  # photos whose images are read together (8 x 51 images)
+SIMILARITIES_PER_CALL = 16 * 50 * 196 * 196  # patch_scores calls of about 0.12 GB float32 similarities: 16 photos
+                                              # at 196 patches, 3 at 441, 1 at 784
+
+
+def size_check(cfg: dict, tag: str, datasets: list[str], device: str = "cuda") -> dict:
+    """Method 1 with the patches of larger images: the same photos and candidates at each size of `rerank.sizecheck.sizes`.
+
+    A larger image gives more patches of the same object (784 at 448 pixels against 196 at 224), so a thin
+    detail (a leg, a seam) is no longer mixed into a patch with its neighbours. The backbone sees the images
+    at each size (`FeatureExtractor.image_size`):
+    - the main size (`data.image_size`): the images of the main folders, as in the patch store;
+    - every other size: the images of `rerank.sizecheck.source_size` (for example `renders_448/`,
+      `queries_448/`), shrunk in memory for a smaller size.
+    Raw patch tokens, all 768 numbers (the PCA of the store was fitted on 224-pixel patches). The sample is a
+    random choice of val photos per dataset (SAM query images); with the count and seed of dimcheck it is the
+    same sample, so the main size repeats the 768-number row of `dim_check`.
+
+    Per size: R@1 after the re-ordering for each weight, and R@1 with one weight for every source chosen by
+    leaving one fold out (on the sample photos of the other folds, both datasets pooled), with the paired
+    difference against stage 1 and against the main size. Saves and returns the report.
+    """
+    from src.models.backbones import FeatureExtractor, object_masks
+    from src.pipeline.extract_patches import set_images
+    from PIL import Image
+
+    m1, scfg, backbone = cfg["rerank"]["method1"], cfg["rerank"]["sizecheck"], cfg["backbone"]["name"]
+    object_share, background = cfg["rerank"]["patches"]["object_share"], tuple(cfg["data"]["background_rgb"])
+    main, sizes, top, weights = cfg["data"]["image_size"], scfg["sizes"], m1["top"], m1["weights"]
+    suffix_of = {s: "" if s == main else paths.size_suffix(scfg["source_size"], main) for s in sizes}
+    extractor = FeatureExtractor(cfg["backbone"], name=backbone, device=device)
+    rng = np.random.default_rng(scfg["seed"])
+
+    def load(files):
+        return np.stack([np.asarray(Image.open(f).convert("RGB")) for f in files])
+
+    def tokens(images, size):
+        extractor.image_size = size
+        b = extractor.batch_size
+        out = [extractor.extract_patches(images[i:i + b], object_masks(images[i:i + b], background)) for i in range(0, len(images), b)]
+        return torch.cat([t.half() for t, _ in out]), torch.cat([s for _, s in out]) >= object_share
+
+    sets = {}
+    for dataset in datasets:
+        lists = cand.read_candidates(tag, dataset, "queries_sam")
+        pick = np.sort(rng.choice(len(lists["query_id"]), size=min(scfg["photos"], len(lists["query_id"])), replace=False))
+        files = {}
+        for suffix in set(suffix_of.values()):
+            _, labels, photo_files, _ = set_images(backbone, dataset, "queries_sam", suffix=suffix)
+            _, _, render_list, views_per_mesh = set_images(backbone, dataset, "renders", suffix=suffix)
+            files[suffix] = (dict(zip(labels["query_id"], photo_files)), render_list, views_per_mesh)
+        views = best_views(lists["view_score"][pick], top, m1["views"])  # (n, top, V)
+        scores = {s: np.zeros((len(pick), top), np.float32) for s in sizes}
+        for start in tqdm(range(0, len(pick), SIZECHECK_PHOTOS_PER_BLOCK), desc=f"{dataset} sizes", unit="block"):
+            idx = pick[start:start + SIZECHECK_PHOTOS_PER_BLOCK]
+            meshes, v = lists["top"][idx, :top], views[start:start + SIZECHECK_PHOTOS_PER_BLOCK]
+            shape = (len(idx), top, v.shape[-1])
+            for suffix, (photo_file, render_list, views_per_mesh) in files.items():
+                photo_images = load([photo_file[q] for q in lists["query_id"][idx]])
+                view_images = load([render_list[m * views_per_mesh + w] for m, vv in zip(meshes.ravel(), v.reshape(-1, v.shape[-1])) for w in vv])
+                for size in [s for s in sizes if suffix_of[s] == suffix]:
+                    photo, photo_object = tokens(photo_images, size)
+                    view, view_object = tokens(view_images, size)
+                    view, view_object = view.view(*shape, *view.shape[1:]), view_object.view(*shape, -1)
+                    step = max(1, SIMILARITIES_PER_CALL // (top * v.shape[-1] * photo.shape[1] ** 2))
+                    block_scores = scores[size][start:start + len(idx)]  # a view: the rows of this block
+                    for j in range(0, len(idx), step):
+                        part = slice(j, j + step)
+                        block_scores[part] = patch_scores(
+                            photo[part], photo_object[part], view[part], view_object[part]).amax(-1).cpu().numpy()
+        sets[f"{dataset}_queries_sam"] = {"rank": lists["rank"][pick], "top": lists["top"][pick], "truth": lists["truth"][pick],
+                                          "top_score": lists["top_score"][pick], "fold": lists["fold"][pick],
+                                          **{f"size_{s}": scores[s] for s in sizes}}
+    extractor.image_size = cfg["backbone"]["image_size"]
+
+    folds = np.unique(np.concatenate([s["fold"] for s in sets.values()]))
+    result = {"tag": tag, "photos_per_dataset": scfg["photos"], "sizes": sizes, "source_size": scfg["source_size"],
+              "top": top, "views": m1["views"], "weights": weights, "by_size": {}}
+    held_out_ranks = {}
+    for size in sizes:
+        key = f"size_{size}"
+        held_out = {int(k): _choose_weight(sets, key, weights, top, folds[folds != k]) for k in folds}
+        rows = {}
+        for name, s in sets.items():
+            ranks = np.empty_like(s["rank"])
+            for k, w in held_out.items():
+                keep = s["fold"] == k
+                ranks[keep] = reranked_ranks(s["rank"][keep], s["top"][keep], s["truth"][keep], s["top_score"][keep], s[key][keep], w, top)
+            held_out_ranks[size, name] = ranks
+            rows[name] = {"photos": int(len(ranks)), "stage1_R@1": float((s["rank"] <= 1).mean()),
+                          "R@1": float((ranks <= 1).mean()),
+                          "difference_to_stage1": paired_difference(s["rank"] <= 1, ranks <= 1, groups=s["truth"]),
+                          "difference_to_main_size": paired_difference(held_out_ranks[main, name] <= 1, ranks <= 1, groups=s["truth"])
+                          if (main, name) in held_out_ranks else None,
+                          "R@1_by_weight": {str(w): float((reranked_ranks(s["rank"], s["top"], s["truth"], s["top_score"], s[key], w, top) <= 1).mean())
+                                            for w in weights}}
+        result["by_size"][str(size)] = {"held_out_weights": held_out, "sets": rows}
+        print(f"\n{size} pixels ({(size // extractor.spec.patch_size) ** 2} patches): weights by held-out fold {held_out}")
+        for name, r in rows.items():
+            d, dm = r["difference_to_stage1"], r["difference_to_main_size"]
+            print(f"  {name:20s} stage 1 R@1 {100 * r['stage1_R@1']:5.1f} -> {100 * r['R@1']:5.1f} "
+                  f"({100 * d['difference']:+.1f}, {100 * d['low']:+.1f} to {100 * d['high']:+.1f})"
+                  + (f"; against {main}: {100 * dm['difference']:+.1f} ({100 * dm['low']:+.1f} to {100 * dm['high']:+.1f})" if dm else ""))
+    target = cand.RERANK_DIR / tag / "sizecheck_report.json"
+    target.write_text(json.dumps(result, indent=2) + "\n")
+    print(f"-> {target.relative_to(paths.ROOT)}")
+    return result
+
+
 def run(cfg: dict, stages: list[str], split: str, tag: str, datasets: list[str], folds: int, device: str = "cuda") -> None:
     if "candidates" in stages:
         cand.build(cfg, split, tag, datasets, folds, device)
@@ -267,3 +377,5 @@ def run(cfg: dict, stages: list[str], split: str, tag: str, datasets: list[str],
         gallery_test(cfg, tag, datasets, device)
     if "dimcheck" in stages:
         dim_check(cfg, tag, datasets, device)
+    if "sizecheck" in stages:
+        size_check(cfg, tag, datasets, device)

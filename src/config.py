@@ -30,7 +30,7 @@ import yaml
 from src.paths import CONFIGS_DIR, resolve
 
 # Settings files that every script loads, in this order (a later file overrides an earlier one).
-DEFAULT_FILES = ("data.yaml", "render.yaml", "backbone.yaml", "train.yaml", "segment.yaml")
+DEFAULT_FILES = ("data.yaml", "render.yaml", "backbone.yaml", "train.yaml", "segment.yaml", "rerank.yaml")
 
 # Marker for "no default given" in get_value. A unique object, because None can be a real setting value.
 _MISSING = object()

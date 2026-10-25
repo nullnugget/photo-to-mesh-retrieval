@@ -1,0 +1,26 @@
+# Re-ranking settings: a second look at the first candidates of the search (stage 2).
+# Stage 1 (the search with the trained heads) gives a short list of meshes for a photo; stage 2 compares
+# the photo with each listed mesh in more detail and changes the order.
+rerank:
+  patches:                           # the patch store (src/models/patch_store.py): 196 patch vectors per image
+    dim: 128                         # numbers per stored patch vector, after PCA from 768 (64 = the first 64 of these)
+    fit_images: 3000                 # images of each kind (renders, photos) for the PCA fit; non-test images only
+    object_share: 0.5                # a patch is "on the object" when at least this share of its pixels is not background
+    seed: 0                          # the random choice of the fit images
+  candidates:                        # the stage-1 lists (src/retrieval/candidates.py)
+    top: 50                          # meshes kept per photo (method 1 uses the first 10; more for later checks)
+  method1:                           # patch-by-patch comparison, no training (src/retrieval/patch_rerank.py)
+    top: 10                          # candidates re-ordered per photo
+    views: 5                         # views per candidate: the best ones by the stage-1 view score
+    dims: [64, 128]                  # numbers per patch vector that are compared (the first d of the stored ones)
+    weights: [0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0, 1.5, 2.0]
+                                     # final score = stage-1 score + weight * patch score; the weight is chosen
+                                     # on the cross-validation folds, like the mix weight
+  gallery:                           # the patch comparison as a stage 1, against every mesh (no shortlist; a check)
+    photos: 500                      # random val photos per dataset (SAM query images)
+    dims: [64]                       # numbers per patch vector
+    seed: 0
+  dimcheck:                          # the cost of the PCA reduction for method 1 (raw 768 numbers, a sample; a check)
+    photos: 500                      # random val photos per dataset (SAM query images)
+    dims: [64, 128]                  # compared with the raw 768
+    seed: 1

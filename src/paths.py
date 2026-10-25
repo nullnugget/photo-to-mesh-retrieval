@@ -34,6 +34,7 @@ RENDERS_DIR = DERIVED_DIR / "renders"
 RENDER_CONFIG_FILE = RENDERS_DIR / "render_config.yaml"
 LIGHTING_TEST_DIR = DERIVED_DIR / "renders_lighting_test"
 FEATURES_DIR = DERIVED_DIR / "features"
+PATCHES_DIR = DERIVED_DIR / "patches"  # patch vectors for re-ranking (src/models/patch_store.py)
 
 # Split files (small, tracked in git): data/splits/<dataset>/<split name>.json
 SPLITS_DIR = DATA_DIR / "splits"

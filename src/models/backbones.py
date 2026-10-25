@@ -174,6 +174,24 @@ class FeatureExtractor:
                 outputs["masked_mean"].append(F.normalize(mean, dim=-1).cpu())
         return {part: torch.cat(vectors).numpy().astype(np.float32) for part, vectors in outputs.items()}
 
+    @torch.inference_mode()
+    def extract_patches(self, images: np.ndarray, masks: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return the patch tokens and the object share of every patch, on the device (for the patch store).
+
+        Args:
+            images: uint8 (N, H, W, 3), RGB; at most `batch_size` images (one pass).
+            masks: bool (N, H, W), True on the object.
+
+        Returns:
+            tokens: float32 (N, patches, spec.dim), the normalized patch tokens (not scaled to length 1).
+            shares: float32 (N, patches), the share of object pixels of each patch, in token order.
+        """
+        if len(images) > self.batch_size:
+            raise ValueError(f"at most {self.batch_size} images per call, got {len(images)}")
+        with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.half_precision):
+            output = self.model.forward_features(self._prepare(images))
+        return output["x_norm_patchtokens"].float(), self._patch_weights(masks)
+
     def extract(self, images: np.ndarray, masks: np.ndarray | None = None) -> np.ndarray:
         """Return one unit-length feature vector per image, with this extractor's recipe: float32 (N, dim).
 

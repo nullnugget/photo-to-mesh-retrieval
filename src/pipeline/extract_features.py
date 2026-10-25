@@ -120,7 +120,7 @@ def catalog_rows(dataset: str, mini: bool) -> tuple[list[dict], list[dict]]:
 # ---------------------------------------------------------------------------------------------
 
 
-class _ImageFiles(Dataset):
+class ImageFiles(Dataset):
     """Reads image files as uint8 RGB arrays. The data loader reads them in parallel worker processes."""
 
     def __init__(self, files: list[Path]):
@@ -188,7 +188,7 @@ def extract_files(extractor: FeatureExtractor, files: list[Path], background_rgb
 
     Worker processes read the files while the GPU works on the previous batch.
     """
-    loader = DataLoader(_ImageFiles(files), batch_size=extractor.batch_size, num_workers=workers, collate_fn=np.stack)
+    loader = DataLoader(ImageFiles(files), batch_size=extractor.batch_size, num_workers=workers, collate_fn=np.stack)
     outputs: dict[str, list] = {part: [] for part in FEATURE_PARTS}
     for images in tqdm(loader, desc=desc, unit="batch"):
         parts = extractor.extract_parts(images, object_masks(images, background_rgb))

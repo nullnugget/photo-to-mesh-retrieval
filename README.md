@@ -65,6 +65,7 @@ Each pipeline step is a Python script in `scripts/`. Run it from the repository 
 | Backbone features of the renders and the query images (feature store) | `scripts/05_extract_features.py --dataset pix3d` (or `abo`) | available |
 | Training of the embedding heads (one split; best and last checkpoints) | `scripts/06_train.py --split seen_meshes` | available |
 | Joint training of Pix3D and ABO (one training gallery of both datasets; val of each dataset against its own gallery) | `scripts/06_train.py --split seen_meshes --datasets pix3d abo` | available |
+| Gallery only: a dataset's training meshes as extra negatives, without its photos (for example Pix3D photos against Pix3D and ABO meshes) | `scripts/06_train.py --split unseen_meshes --datasets pix3d abo --gallery-only abo --folds all --tag <tag>` | available |
 | Cross-validation by mesh (one training per fold of the non-test meshes, then the pooled val result) | `scripts/06_train.py --split unseen_meshes --folds all --tag <name>` | available |
 | Cross-validation by category (one training per non-test category; with `--datasets pix3d abo`, ABO follows the Pix3D categories and leaves out the near relatives) | `scripts/06_train.py --split unseen_categories --folds all --tag <name>` | available |
 | Pool again, or compare two cross-validations (paired, over meshes; also Pix3D-only against joint, on the shared val photos) | `scripts/09_cross_validation.py --compare <tag a> <tag b> --epoch last` | available |

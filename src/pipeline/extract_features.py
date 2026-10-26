@@ -44,6 +44,7 @@ from tqdm import tqdm
 
 from src import paths
 from src.data.catalog import read_table
+from src.data.workers import loader_worker_init
 from src.models.backbones import FEATURE_PARTS, FeatureExtractor, object_masks
 from src.models.feature_store import QUERIES, RENDERS, FeatureTable, write_features
 from src.pipeline import segment_photos
@@ -199,7 +200,8 @@ def extract_files(extractor: FeatureExtractor, files: list[Path], background_rgb
 
     Worker processes read the files while the GPU works on the previous batch.
     """
-    loader = DataLoader(ImageFiles(files), batch_size=extractor.batch_size, num_workers=workers, collate_fn=np.stack)
+    loader = DataLoader(ImageFiles(files), batch_size=extractor.batch_size, num_workers=workers, collate_fn=np.stack,
+                        worker_init_fn=loader_worker_init)  # all CPU cores (workers.loader_worker_init)
     outputs: dict[str, list] = {part: [] for part in FEATURE_PARTS}
     for images in tqdm(loader, desc=desc, unit="batch"):
         parts = extractor.extract_parts(images, object_masks(images, background_rgb))

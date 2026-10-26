@@ -18,11 +18,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import torch
 from PIL import Image
 from tqdm import tqdm
 
 from src import paths
+from src.data.workers import loader_worker_init
 from src.preprocess.crop import EmptyMaskError, crop_to_square
 
 # Status values in the result of each job.
@@ -100,15 +100,12 @@ def make_query_image(job: QueryJob) -> dict:
 
 
 def _init_worker() -> None:
-    """Run once in each worker process: one thread for torch, because the processes already run in parallel.
+    """Run once in each worker process: all CPU cores and one PyTorch thread (`workers.loader_worker_init`).
 
-    The worker also sets all CPU cores again, as `datasets.loader_worker_init` does: when numpy (MKL) is
-    loaded before torch, a forked worker starts bound to 2 logical CPUs, and then all workers share these
-    2 CPUs (measured: 8 workers made 3.6 images per second bound, 14 on all 16 CPUs).
+    Without it, when numpy (MKL) is loaded before torch, the forked workers start bound to 2 logical CPUs
+    and all share them (measured: 8 workers made 3.6 images per second bound, 14 on all 16 CPUs).
     """
-    if hasattr(os, "sched_setaffinity"):  # Linux; other systems do not bind this way
-        os.sched_setaffinity(0, range(os.cpu_count()))
-    torch.set_num_threads(1)
+    loader_worker_init(0)
 
 
 def default_workers() -> int:

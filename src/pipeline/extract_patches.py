@@ -23,6 +23,7 @@ Outputs (normal run):
     data/derived/patches/<backbone>/projection.npz
     data/derived/patches/<backbone>/<dataset>_<set>.npy, _object.npy, _labels.npz
     data/derived/patches/<backbone>/patches_report.json
+    (images of another size, `rerank.patches.size`: the same files in data/derived/patches/<backbone>_<size>/)
 """
 
 import datetime
@@ -38,9 +39,10 @@ from tqdm import tqdm
 
 from src import paths
 from src.data.catalog import read_table
+from src.data.workers import loader_worker_init
 from src.models.backbones import FeatureExtractor, object_masks
 from src.models.feature_store import QUERIES, RENDERS, read_features
-from src.models.patch_store import CovarianceSum, PatchProjection, PatchWriter, patch_files, projection_file
+from src.models.patch_store import CovarianceSum, PatchProjection, PatchWriter, patch_files, projection_file, store_name
 from src.pipeline.extract_features import (CATALOG_IMAGES, DATASETS, QUERY_SETS, ImageFiles, catalog_query_file,
                                            feature_sets, render_files, sam_query_file)
 from src.runs import git_state
@@ -93,13 +95,14 @@ def test_parts(dataset: str) -> tuple[set[str], set[str]]:
     return photos, meshes
 
 
-def fit_images(backbone: str, count: int, seed: int) -> tuple[list[Path], list[Path]]:
-    """Return (render files, query image files) for the PCA fit: `count` random non-test images of each kind."""
+def fit_images(backbone: str, count: int, seed: int, suffix: str = "") -> tuple[list[Path], list[Path]]:
+    """Return (render files, query image files) for the PCA fit: `count` random non-test images of each kind
+    (`suffix`: the files of another image size, `paths.size_suffix`)."""
     renders, queries = [], []
     for dataset in DATASETS:
         test_photos, test_meshes = test_parts(dataset)
         for feature_set in feature_sets(dataset):
-            kind, labels, files, views = set_images(backbone, dataset, feature_set)
+            kind, labels, files, views = set_images(backbone, dataset, feature_set, suffix=suffix)
             if kind == RENDERS:
                 renders += [f for i, f in enumerate(files) if labels["mesh_id"][i // views] not in test_meshes]
             else:
@@ -109,7 +112,8 @@ def fit_images(backbone: str, count: int, seed: int) -> tuple[list[Path], list[P
 
 
 def _loader(files: list[Path], extractor: FeatureExtractor, workers: int) -> DataLoader:
-    return DataLoader(ImageFiles(files), batch_size=extractor.batch_size, num_workers=workers, collate_fn=np.stack)
+    return DataLoader(ImageFiles(files), batch_size=extractor.batch_size, num_workers=workers, collate_fn=np.stack,
+                      worker_init_fn=loader_worker_init)
 
 
 def fit_projection(extractor: FeatureExtractor, files: list[Path], background: tuple, object_share: float,
@@ -134,21 +138,23 @@ def run(cfg: dict, stages: list[str], backbone: str | None = None, mini: bool = 
     """Run the stages ("fit", "extract") and return the report (also saved as JSON)."""
     pcfg = cfg["rerank"]["patches"]
     backbone = backbone or cfg["backbone"]["name"]
+    suffix = paths.size_suffix(pcfg["size"], cfg["data"]["image_size"])  # "" at the main size, "_448" at 448
+    store = store_name(backbone, pcfg["size"], cfg["data"]["image_size"])
     root = output_root(mini)
     background = tuple(cfg["data"]["background_rgb"])
     workers = cfg["backbone"]["loader_workers"]
-    extractor = FeatureExtractor(cfg["backbone"], name=backbone, device=device)
-    report_path = root / backbone / "patches_report.json"
-    report = json.loads(report_path.read_text()) if report_path.exists() else {"backbone": backbone, "sets": {}}
+    extractor = FeatureExtractor({**cfg["backbone"], "image_size": pcfg["size"]}, name=backbone, device=device)
+    report_path = root / store / "patches_report.json"
+    report = json.loads(report_path.read_text()) if report_path.exists() else {"backbone": backbone, "size": pcfg["size"], "sets": {}}
     commit, dirty = git_state()
-    target = projection_file(backbone, root)
+    target = projection_file(store, root)
 
     if "fit" in stages:
         if target.exists() and not overwrite:
             print(f"fit: {target} exists (overwrite to fit again)")
         else:
             count = MINI_FIT if mini else pcfg["fit_images"]
-            render_list, query_list = fit_images(backbone, count, pcfg["seed"])
+            render_list, query_list = fit_images(backbone, count, pcfg["seed"], suffix)
             start = time.perf_counter()
             projection = fit_projection(extractor, render_list + query_list, background, pcfg["object_share"], workers)
             projection.save(target)
@@ -167,11 +173,11 @@ def run(cfg: dict, stages: list[str], backbone: str | None = None, mini: bool = 
         projection = PatchProjection.load(target)
         for dataset in DATASETS:
             for feature_set in feature_sets(dataset):
-                files_out = patch_files(backbone, dataset, feature_set, root)
+                files_out = patch_files(store, dataset, feature_set, root)
                 if files_out["vectors"].exists() and not overwrite:
                     print(f"{dataset}_{feature_set}: exists, skipped")
                     continue
-                kind, labels, files, views = set_images(backbone, dataset, feature_set, mini)
+                kind, labels, files, views = set_images(backbone, dataset, feature_set, mini, suffix)
                 shape = (len(labels["mesh_id"]), views) if kind == RENDERS else (len(labels["query_id"]),)
                 patches = (extractor.image_size // extractor.spec.patch_size) ** 2
                 writer = PatchWriter(files_out, shape, pcfg["dim"], patches)

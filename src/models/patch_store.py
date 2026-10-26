@@ -13,6 +13,9 @@ reduces each patch vector with PCA (principal component analysis) to `rerank.pat
   exactly the 64-number reduction. A user of the store can take fewer numbers without a new pass.
 - Before a comparison, each stored vector is scaled to length 1 again (cosine similarity).
 
+Images of another size (`rerank.patches.size`, for example 448 pixels: 28 x 28 = 784 patches) have a store
+of their own, with its own projection, in `data/derived/patches/<backbone>_<size>/` (`store_name`).
+
 Files of one set (`data/derived/patches/<backbone>/`, see `patch_files`):
 
 | File                         | Content                                                         |
@@ -45,16 +48,22 @@ PATCH_DTYPE = np.float16
 PROJECTION_FILE = "projection.npz"
 
 
-def patch_files(backbone: str, dataset: str, feature_set: str, root: Path = paths.PATCHES_DIR) -> dict[str, Path]:
-    """Return the three files of one set: {"vectors", "object", "labels"}."""
-    folder = root / backbone
+def store_name(backbone: str, size: int, main_size: int) -> str:
+    """Return the folder name of the store of one image size: `<backbone>` at the main size (`data.image_size`),
+    `<backbone>_<size>` at another size (for example `dinov3_vitb16_448`)."""
+    return backbone + paths.size_suffix(size, main_size)
+
+
+def patch_files(store: str, dataset: str, feature_set: str, root: Path = paths.PATCHES_DIR) -> dict[str, Path]:
+    """Return the three files of one set of a store (`store_name`): {"vectors", "object", "labels"}."""
+    folder = root / store
     return {"vectors": folder / f"{dataset}_{feature_set}.npy",
             "object": folder / f"{dataset}_{feature_set}_object.npy",
             "labels": folder / f"{dataset}_{feature_set}_labels.npz"}
 
 
-def projection_file(backbone: str, root: Path = paths.PATCHES_DIR) -> Path:
-    return root / backbone / PROJECTION_FILE
+def projection_file(store: str, root: Path = paths.PATCHES_DIR) -> Path:
+    return root / store / PROJECTION_FILE
 
 
 # ---------------------------------------------------------------------------------------------

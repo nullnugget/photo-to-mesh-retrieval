@@ -18,6 +18,8 @@ Stages:
 Outputs: `data/derived/rerank/<tag>/` (`<dataset>_<set>_candidates.npz`, `<dataset>_<set>_method1.npz`,
 `method1_v<views>_report.json`, `gallery_report.json`, `dimcheck_report.json`, `sizecheck_report.json`; the method-1 files carry
 the number of views per candidate, `_v<views>`, so that runs with different view counts stay side by side).
+The patch store is that of `rerank.patches.size`; at another size than the main one, the outputs of the method1,
+report, gallery, and dimcheck stages carry its suffix (for example `method1_v5_448_report.json`, `dimcheck_448_report.json`).
 """
 
 import json
@@ -27,17 +29,27 @@ import torch
 from tqdm import tqdm
 
 from src import paths
-from src.models.patch_store import patch_files, read_patches
+from src.models.patch_store import patch_files, read_patches, store_name
 from src.retrieval import candidates as cand
 from src.retrieval.metrics import paired_difference
 from src.retrieval.patch_rerank import patch_scores, reranked_ranks
 
-VIEWS_PER_BLOCK = 160  # photos per block = 160 // views: 32 photos x 10 candidates x 5 views x 196 x 196 similarities
+VIEWS_PER_BLOCK = 160  # photos per block = 160 // views at 196 patches (fewer at more patches, by their square):
+                       # 32 photos x 10 candidates x 5 views x 196 x 196 similarities
                        # is about 1.5 GB on the GPU
+SIMILARITIES_PER_CALL = 16 * 50 * 196 * 196  # patch_scores calls of about 0.12 GB float32 similarities: 16 photos
+                                              # at 196 patches, 3 at 441, 1 at 784
 
 
-def method1_file(tag: str, dataset: str, query_set: str, views: int):
-    return cand.RERANK_DIR / tag / f"{dataset}_{query_set}_method1_v{views}.npz"
+def store_of(cfg: dict) -> tuple[str, str]:
+    """Return (store name, file suffix) of the patch store of `rerank.patches.size` ("" and the plain name at the
+    main size; "_448" at 448, so that the outputs of both sizes stay side by side)."""
+    size, main = cfg["rerank"]["patches"]["size"], cfg["data"]["image_size"]
+    return store_name(cfg["backbone"]["name"], size, main), paths.size_suffix(size, main)
+
+
+def method1_file(tag: str, dataset: str, query_set: str, views: int, suffix: str = ""):
+    return cand.RERANK_DIR / tag / f"{dataset}_{query_set}_method1_v{views}{suffix}.npz"
 
 
 def best_views(view_score: np.ndarray, top: int, views: int) -> np.ndarray:
@@ -47,11 +59,11 @@ def best_views(view_score: np.ndarray, top: int, views: int) -> np.ndarray:
 
 def method1_scores(cfg: dict, tag: str, dataset: str, query_set: str, device: str = "cuda") -> dict[str, np.ndarray]:
     """Patch scores of the first candidates of every photo of one set: {f"patch_{d}": (N, top)} and the views used."""
-    m1, backbone = cfg["rerank"]["method1"], cfg["backbone"]["name"]
+    m1, (store, _) = cfg["rerank"]["method1"], store_of(cfg)
     threshold = round(cfg["rerank"]["patches"]["object_share"] * 255)
     lists = cand.read_candidates(tag, dataset, query_set)
-    photos = read_patches(patch_files(backbone, dataset, query_set))
-    renders = read_patches(patch_files(backbone, dataset, "renders"))
+    photos = read_patches(patch_files(store, dataset, query_set))
+    renders = read_patches(patch_files(store, dataset, "renders"))
     if not np.array_equal(renders.ids, lists["gallery"]):
         raise ValueError("the render rows of the patch store and the gallery of the candidate lists differ")
     row = photos.row_index()
@@ -60,7 +72,8 @@ def method1_scores(cfg: dict, tag: str, dataset: str, query_set: str, device: st
     meshes = lists["top"][:, :top]
     views = best_views(lists["view_score"], top, m1["views"])  # (N, top, V)
     out = {f"patch_{d}": np.zeros((len(meshes), top), np.float32) for d in dims}
-    per_block = max(1, VIEWS_PER_BLOCK // m1["views"])
+    patches = photos.vectors.shape[-2]  # 196 at 224 pixels, 784 at 448: the similarities grow with its square
+    per_block = max(1, (VIEWS_PER_BLOCK // m1["views"]) * 196 ** 2 // patches ** 2)
     for start in tqdm(range(0, len(meshes), per_block), desc=f"{dataset}_{query_set}", unit="block"):
         block = slice(start, start + per_block)
         m = np.broadcast_to(meshes[block][..., None], views[block].shape)
@@ -91,16 +104,16 @@ def _choose_weight(sets: dict, key: str, weights: list[float], top: int, folds: 
 
 def report(cfg: dict, tag: str, datasets: list[str]) -> dict:
     """R@1 after method 1 for every set, with the weight chosen by leaving one fold out; save and return the report."""
-    m1 = cfg["rerank"]["method1"]
+    m1, (store, suffix) = cfg["rerank"]["method1"], store_of(cfg)
     top, weights = m1["top"], m1["weights"]
     sets = {}
     for dataset in datasets:
         for query_set in cand.QUERY_SETS[dataset]:
             lists = cand.read_candidates(tag, dataset, query_set)
-            with np.load(method1_file(tag, dataset, query_set, m1["views"])) as data:
+            with np.load(method1_file(tag, dataset, query_set, m1["views"], suffix)) as data:
                 sets[f"{dataset}_{query_set}"] = {**lists, **{k: data[k] for k in data.files}}
     folds = np.unique(np.concatenate([s["fold"] for s in sets.values()]))
-    result = {"tag": tag, "top": top, "views": m1["views"], "weights": weights, "dims": {}}
+    result = {"tag": tag, "store": store, "top": top, "views": m1["views"], "weights": weights, "dims": {}}
     for d in m1["dims"]:
         key = f"patch_{d}"
         held_out = {int(k): _choose_weight(sets, key, weights, top, folds[folds != k]) for k in folds}
@@ -126,7 +139,7 @@ def report(cfg: dict, tag: str, datasets: list[str]) -> dict:
             print(f"  {name:24s} photos {r['photos']:6d}  stage 1 R@1 {100 * r['stage1_R@1']:5.1f}  -> method 1 {100 * r['method1_R@1']:5.1f}  "
                   f"({100 * dd['difference']:+.1f}, {100 * dd['low']:+.1f} to {100 * dd['high']:+.1f})  "
                   f"R@{top} limit {100 * r[f'stage1_R@{top}']:.1f}")
-    target = cand.RERANK_DIR / tag / f"method1_v{m1['views']}_report.json"
+    target = cand.RERANK_DIR / tag / f"method1_v{m1['views']}{suffix}_report.json"
     target.write_text(json.dumps(result, indent=2) + "\n")
     print(f"-> {target.relative_to(paths.ROOT)}")
     return result
@@ -143,15 +156,18 @@ def gallery_test(cfg: dict, tag: str, datasets: list[str], device: str = "cuda")
     `rerank.gallery.dims`. Mesh score = the best view. The ranks are compared with the stage-1 ranks of
     the same photos (the out-of-fold lists). Saves and returns the report.
     """
-    gcfg, backbone = cfg["rerank"]["gallery"], cfg["backbone"]["name"]
+    gcfg, (store, suffix) = cfg["rerank"]["gallery"], store_of(cfg)
+    if suffix:
+        raise ValueError("the gallery check runs on the store of the main image size only (its blocks hold the whole gallery "
+                         "on the GPU); set rerank.patches.size to data.image_size")
     threshold = round(cfg["rerank"]["patches"]["object_share"] * 255)
     rng = np.random.default_rng(gcfg["seed"])
     result = {"tag": tag, "photos_per_dataset": gcfg["photos"], "dims": gcfg["dims"], "sets": {}}
     for dataset in datasets:
         lists = cand.read_candidates(tag, dataset, "queries_sam")
         pick = np.sort(rng.choice(len(lists["query_id"]), size=min(gcfg["photos"], len(lists["query_id"])), replace=False))
-        photos = read_patches(patch_files(backbone, dataset, "queries_sam"))
-        renders = read_patches(patch_files(backbone, dataset, "renders"))
+        photos = read_patches(patch_files(store, dataset, "queries_sam"))
+        renders = read_patches(patch_files(store, dataset, "renders"))
         row = photos.row_index()
         d_max = max(gcfg["dims"])
         gallery = torch.from_numpy(np.asarray(renders.vectors[..., :d_max])).to(device)  # (M, V, Q, d)
@@ -181,7 +197,7 @@ def gallery_test(cfg: dict, tag: str, datasets: list[str], device: str = "cuda")
             e = entry[f"patch_{d}"]
             print(f"  patches only, {d} numbers: " + "  ".join(f"{k} {100 * e[k]:.1f}" for k in ("R@1", "R@5", "R@10", "R@50"))
                   + f"  (R@1 against stage 1 {100 * e['difference_R@1']['difference']:+.1f})")
-    target = cand.RERANK_DIR / tag / "gallery_report.json"
+    target = cand.RERANK_DIR / tag / f"gallery{suffix}_report.json"
     target.write_text(json.dumps(result, indent=2) + "\n")
     print(f"-> {target.relative_to(paths.ROOT)}")
     return result
@@ -203,8 +219,9 @@ def dim_check(cfg: dict, tag: str, datasets: list[str], device: str = "cuda") ->
 
     m1, dcfg, backbone = cfg["rerank"]["method1"], cfg["rerank"]["dimcheck"], cfg["backbone"]["name"]
     object_share, background = cfg["rerank"]["patches"]["object_share"], tuple(cfg["data"]["background_rgb"])
-    extractor = FeatureExtractor(cfg["backbone"], name=backbone, device=device)
-    projection = PatchProjection.load(projection_file(backbone))
+    store, suffix = store_of(cfg)
+    extractor = FeatureExtractor({**cfg["backbone"], "image_size": cfg["rerank"]["patches"]["size"]}, name=backbone, device=device)
+    projection = PatchProjection.load(projection_file(store))
     rng = np.random.default_rng(dcfg["seed"])
     top, dims = m1["top"], [*dcfg["dims"], extractor.spec.dim]
 
@@ -214,12 +231,12 @@ def dim_check(cfg: dict, tag: str, datasets: list[str], device: str = "cuda") ->
                for i in range(0, len(images), extractor.batch_size)]
         return torch.cat([t for t, _ in out]), torch.cat([s for _, s in out]) >= object_share
 
-    result = {"tag": tag, "photos_per_dataset": dcfg["photos"], "sets": {}}
+    result = {"tag": tag, "store": store, "photos_per_dataset": dcfg["photos"], "sets": {}}
     for dataset in datasets:
         lists = cand.read_candidates(tag, dataset, "queries_sam")
         pick = np.sort(rng.choice(len(lists["query_id"]), size=min(dcfg["photos"], len(lists["query_id"])), replace=False))
-        _, photo_labels, photo_files, _ = set_images(backbone, dataset, "queries_sam")
-        _, _, render_list, views_per_mesh = set_images(backbone, dataset, "renders")
+        _, photo_labels, photo_files, _ = set_images(backbone, dataset, "queries_sam", suffix=suffix)
+        _, _, render_list, views_per_mesh = set_images(backbone, dataset, "renders", suffix=suffix)
         photo_file = dict(zip(photo_labels["query_id"], photo_files))
         views = best_views(lists["view_score"][pick], top, m1["views"])  # (n, top, V)
         scores = {d: np.zeros((len(pick), top), np.float32) for d in dims}
@@ -232,10 +249,14 @@ def dim_check(cfg: dict, tag: str, datasets: list[str], device: str = "cuda") ->
             view, view_object = tokens(files)
             shape = (len(idx), top, v.shape[-1])
             view, view_object = view.view(*shape, *view.shape[1:]), view_object.view(*shape, -1)
+            step = max(1, SIMILARITIES_PER_CALL // (top * v.shape[-1] * photo.shape[1] ** 2))  # 8 photos at 196 patches, 1 at 784
             for d in dims:
                 p = photo if d == extractor.spec.dim else projection.project(photo, d)
                 w = view if d == extractor.spec.dim else projection.project(view, d)
-                scores[d][start:start + 8] = patch_scores(p.half(), photo_object, w.half(), view_object).amax(-1).cpu().numpy()
+                block_scores = scores[d][start:start + len(idx)]  # a view: the rows of this block
+                for j in range(0, len(idx), step):
+                    part = slice(j, j + step)
+                    block_scores[part] = patch_scores(p[part].half(), photo_object[part], w[part].half(), view_object[part]).amax(-1).cpu().numpy()
         entry = {"photos": int(len(pick)), "stage1_R@1": float((lists["rank"][pick] <= 1).mean()), "R@1_by_weight": {}}
         for d in dims:
             entry["R@1_by_weight"][str(d)] = {
@@ -248,15 +269,13 @@ def dim_check(cfg: dict, tag: str, datasets: list[str], device: str = "cuda") ->
             best = max(curve, key=curve.get)
             print(f"  {d:4d} numbers: best weight {best}: R@1 {100 * curve[best]:.1f};  " +
                   "  ".join(f"{w}: {100 * r:.1f}" for w, r in curve.items()))
-    target = cand.RERANK_DIR / tag / "dimcheck_report.json"
+    target = cand.RERANK_DIR / tag / f"dimcheck{suffix}_report.json"
     target.write_text(json.dumps(result, indent=2) + "\n")
     print(f"-> {target.relative_to(paths.ROOT)}")
     return result
 
 
 SIZECHECK_PHOTOS_PER_BLOCK = 8  # photos whose images are read together (8 x 51 images)
-SIMILARITIES_PER_CALL = 16 * 50 * 196 * 196  # patch_scores calls of about 0.12 GB float32 similarities: 16 photos
-                                              # at 196 patches, 3 at 441, 1 at 784
 
 
 def size_check(cfg: dict, tag: str, datasets: list[str], device: str = "cuda") -> dict:
@@ -370,7 +389,7 @@ def run(cfg: dict, stages: list[str], split: str, tag: str, datasets: list[str],
         for dataset in datasets:
             for query_set in cand.QUERY_SETS[dataset]:
                 out = method1_scores(cfg, tag, dataset, query_set, device)
-                np.savez(method1_file(tag, dataset, query_set, cfg["rerank"]["method1"]["views"]), **out)
+                np.savez(method1_file(tag, dataset, query_set, cfg["rerank"]["method1"]["views"], store_of(cfg)[1]), **out)
     if "report" in stages:
         report(cfg, tag, datasets)
     if "gallery" in stages:

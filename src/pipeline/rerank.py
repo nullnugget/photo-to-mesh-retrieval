@@ -6,7 +6,7 @@ Stages:
    candidates of every photo, from the patch store (`src/models/patch_store.py`), for each number of
    patch dimensions in `rerank.method1.dims` (the first d of the stored numbers).
 3. report: R@1 after the re-ordering for each weight, and the weight chosen fairly:
-   - one weight for every photo of every source (D77), chosen on the pooled photos of the other
+   - one weight for every photo of every source (one model for all sources), chosen on the pooled photos of the other
      folds and applied to the photos of the held-out fold ("leave one fold out"), so that no photo
      helps to choose the weight that it is measured with;
    - the paired difference against stage 1 over meshes (bootstrap), as `09_cross_validation.py --compare`.
@@ -149,7 +149,7 @@ MESHES_PER_BLOCK = 24  # gallery stage: 24 meshes x 25 views x 196 x 196 similar
 
 
 def gallery_test(cfg: dict, tag: str, datasets: list[str], device: str = "cuda") -> dict:
-    """The patch comparison as a stage 1 (owner's question, 2026-10-25): every mesh of the gallery, no shortlist.
+    """The patch comparison as a stage 1: every mesh of the gallery, no shortlist.
 
     A random sample of `rerank.gallery.photos` val photos per dataset (SAM query images) is compared with
     every mesh of its own dataset, all views (no stage-1 view choice), for each number of dimensions in

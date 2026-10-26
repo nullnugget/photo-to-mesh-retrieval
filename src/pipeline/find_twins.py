@@ -19,7 +19,7 @@ Stages (each one reads the output of the one before):
               the folder names repeat across categories).
               The representative is the entry of the group's class with the smallest last id part (an
               entry that is rendered already). Written: `twin_groups.csv`, and for ABO also the catalog:
-              - ABO: the entries are the groups of exact copies (`catalog_abo_meshes`, D49-style); the
+              - ABO: the entries are the groups of exact copies (`catalog_abo_meshes`); the
                 stage always starts from their table `geometry_groups_exact.csv`, so it can run again.
                 It writes the group table `geometry_groups.csv` (every ABO mesh → its final entry) and
                 the ABO rows of `meshes.csv`.

@@ -8,7 +8,7 @@ uses only the extra images.
 
 The rule (`segment.cleaning.max_bad_score`): an extra image with a bad score above it is left out by the
 query step (`03_make_queries.py --dataset abo --keep-parts`), from every part. The threshold was chosen
-on 444 reviewed extra images (06 P41): at 0.4, about 88 % of the close-ups go and 1.6 % of the good
+on 444 reviewed extra images: at 0.4, about 88 % of the close-ups go and 1.6 % of the good
 photos.
 
 Outputs:

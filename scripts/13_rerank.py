@@ -14,7 +14,8 @@ The logic is in `src/pipeline/rerank.py`.
 Usage (from the repository root):
     python scripts/13_rerank.py --tag cvjointclean                              # all stages
     python scripts/13_rerank.py --tag cvjointclean --stages report
-    python scripts/13_rerank.py --tag cvjointclean --stages gallery dimcheck
+    python scripts/13_rerank.py --tag cvjointclean --stages dimcheck
+    python scripts/13_rerank.py --tag cvjointclean --stages gallery --set rerank.patches.size=224   # the 224 store only
     python scripts/13_rerank.py --tag cvjointclean --stages sizecheck
 """
 

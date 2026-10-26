@@ -11,8 +11,10 @@ Usage (from the repository root):
     python scripts/12_extract_patches.py                         # fit (if missing), then extract every set
     python scripts/12_extract_patches.py --mini                  # quick check
     python scripts/12_extract_patches.py --stages fit --overwrite
-    python scripts/12_extract_patches.py --set rerank.patches.size=448   # the store of the 448-pixel images
-                                                                         # (they must exist: 04_render.py, 14_query_images_at_size.py)
+    python scripts/12_extract_patches.py --set rerank.patches.size=224   # the store of the 224-pixel images
+                                                                         # (the default size, 448, needs the images of
+                                                                         # 04_render.py --set render.output_size=448 and
+                                                                         # 14_query_images_at_size.py --size 448)
 """
 
 import argparse

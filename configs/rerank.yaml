@@ -7,10 +7,10 @@ rerank:
     fit_images: 3000                 # images of each kind (renders, photos) for the PCA fit; non-test images only
     object_share: 0.5                # a patch is "on the object" when at least this share of its pixels is not background
     seed: 0                          # the random choice of the fit images
-    size: 224                        # side length of the images that the backbone sees: 224 (14 x 14 = 196 patches, the
-                                     # main images) or another size whose images exist (448: 784 patches, from renders_448/
-                                     # and queries_448/). One store per size, data/derived/patches/<backbone>[_<size>]/;
-                                     # the re-ranking reads the store of this size
+    size: 448                        # side length of the images that the backbone sees: 448 (28 x 28 = 784 patches, from
+                                     # renders_448/ and queries_448/; method 1 gains more with it than with 224, most on ABO)
+                                     # or 224 (14 x 14 = 196 patches, the main images). One store per size,
+                                     # data/derived/patches/<backbone>[_<size>]/; the re-ranking reads the store of this size
   candidates:                        # the stage-1 lists (src/retrieval/candidates.py)
     top: 50                          # meshes kept per photo (method 1 uses the first 10; more for later checks)
   method1:                           # patch-by-patch comparison, no training (src/retrieval/patch_rerank.py)

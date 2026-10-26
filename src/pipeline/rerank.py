@@ -18,6 +18,7 @@ Stages:
 Outputs: `data/derived/rerank/<tag>/` (`<dataset>_<set>_candidates.npz`, `<dataset>_<set>_method1.npz`,
 `method1_v<views>_report.json`, `gallery_report.json`, `dimcheck_report.json`, `sizecheck_report.json`; the method-1 files carry
 the number of views per candidate, `_v<views>`, so that runs with different view counts stay side by side).
+A list length other than 10 (`rerank.method1.top`) adds `_top<top>` to the method-1 files and report.
 The patch store is that of `rerank.patches.size`; at another size than the main one, the outputs of the method1,
 report, gallery, and dimcheck stages carry its suffix (for example `method1_v5_448_report.json`, `dimcheck_448_report.json`).
 """
@@ -48,8 +49,17 @@ def store_of(cfg: dict) -> tuple[str, str]:
     return store_name(cfg["backbone"]["name"], size, main), paths.size_suffix(size, main)
 
 
-def method1_file(tag: str, dataset: str, query_set: str, views: int, suffix: str = ""):
-    return cand.RERANK_DIR / tag / f"{dataset}_{query_set}_method1_v{views}{suffix}.npz"
+DEFAULT_TOP = 10  # list length without a mark in the file names (the files made before the length was a choice)
+
+
+def top_mark(top: int) -> str:
+    """Return the file-name mark of a list length: none for the first 10, else "_top<top>" (for example "_top20").
+    So runs of other list lengths stay side by side."""
+    return "" if top == DEFAULT_TOP else f"_top{top}"
+
+
+def method1_file(tag: str, dataset: str, query_set: str, views: int, suffix: str = "", top: int = DEFAULT_TOP):
+    return cand.RERANK_DIR / tag / f"{dataset}_{query_set}_method1_v{views}{suffix}{top_mark(top)}.npz"
 
 
 def best_views(view_score: np.ndarray, top: int, views: int) -> np.ndarray:
@@ -110,7 +120,7 @@ def report(cfg: dict, tag: str, datasets: list[str]) -> dict:
     for dataset in datasets:
         for query_set in cand.QUERY_SETS[dataset]:
             lists = cand.read_candidates(tag, dataset, query_set)
-            with np.load(method1_file(tag, dataset, query_set, m1["views"], suffix)) as data:
+            with np.load(method1_file(tag, dataset, query_set, m1["views"], suffix, top)) as data:
                 sets[f"{dataset}_{query_set}"] = {**lists, **{k: data[k] for k in data.files}}
     folds = np.unique(np.concatenate([s["fold"] for s in sets.values()]))
     result = {"tag": tag, "store": store, "top": top, "views": m1["views"], "weights": weights, "dims": {}}
@@ -139,7 +149,7 @@ def report(cfg: dict, tag: str, datasets: list[str]) -> dict:
             print(f"  {name:24s} photos {r['photos']:6d}  stage 1 R@1 {100 * r['stage1_R@1']:5.1f}  -> method 1 {100 * r['method1_R@1']:5.1f}  "
                   f"({100 * dd['difference']:+.1f}, {100 * dd['low']:+.1f} to {100 * dd['high']:+.1f})  "
                   f"R@{top} limit {100 * r[f'stage1_R@{top}']:.1f}")
-    target = cand.RERANK_DIR / tag / f"method1_v{m1['views']}{suffix}_report.json"
+    target = cand.RERANK_DIR / tag / f"method1_v{m1['views']}{suffix}{top_mark(top)}_report.json"
     target.write_text(json.dumps(result, indent=2) + "\n")
     print(f"-> {target.relative_to(paths.ROOT)}")
     return result
@@ -389,7 +399,8 @@ def run(cfg: dict, stages: list[str], split: str, tag: str, datasets: list[str],
         for dataset in datasets:
             for query_set in cand.QUERY_SETS[dataset]:
                 out = method1_scores(cfg, tag, dataset, query_set, device)
-                np.savez(method1_file(tag, dataset, query_set, cfg["rerank"]["method1"]["views"], store_of(cfg)[1]), **out)
+                m1 = cfg["rerank"]["method1"]
+                np.savez(method1_file(tag, dataset, query_set, m1["views"], store_of(cfg)[1], m1["top"]), **out)
     if "report" in stages:
         report(cfg, tag, datasets)
     if "gallery" in stages:

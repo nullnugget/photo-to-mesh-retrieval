@@ -46,7 +46,7 @@ from src import paths
 from src.data.catalog import read_table
 from src.data.workers import loader_worker_init
 from src.models.backbones import FEATURE_PARTS, FeatureExtractor, object_masks
-from src.models.feature_store import QUERIES, RENDERS, FeatureTable, write_features
+from src.models.feature_store import QUERIES, RENDERS, FeatureTable, read_features, write_features
 from src.pipeline import segment_photos
 from src.pipeline.render_meshes import VIEW_NAME, render_folder
 from src.preprocess.queries import FAILED, QueryJob, make_query_images
@@ -253,6 +253,11 @@ def run(dataset: str, cfg: dict, backbone: str | None = None, sets: list[str] | 
         mini: True = a small sample, outputs in test_outputs/extract_features_mini/.
         overwrite: True = write a set again if its file exists (and make the SAM query images again).
         device: "cuda" or "cpu".
+
+    Images of another size (`backbone.image_size` other than `data.image_size`, for example 448): the
+    images of that size are read (`renders_448/`, `queries_448/`, `masks/pix3d_sam_queries_448/`; made
+    by the render step and `14_query_images_at_size.py`), with the rows of the main feature file of
+    each set, and the files go to `data/derived/features/<backbone>_<size>/`.
     """
     if dataset not in DATASETS:
         raise ValueError(f"dataset must be one of {DATASETS}, got {dataset!r}")
@@ -265,7 +270,9 @@ def run(dataset: str, cfg: dict, backbone: str | None = None, sets: list[str] | 
     background = tuple(cfg["data"]["background_rgb"])
     workers = cfg["backbone"]["loader_workers"]
     meshes, queries = catalog_rows(dataset, mini)
-    to_write = [s for s in sets if overwrite or not paths.features_file(backbone, dataset, s, root).exists()]
+    suffix = paths.size_suffix(cfg["backbone"]["image_size"], cfg["data"]["image_size"])  # "" at the main size
+    store = backbone + suffix  # the folder of the feature files, for example dinov3_vitb16_448
+    to_write = [s for s in sets if overwrite or not paths.features_file(store, dataset, s, root).exists()]
     print(f"{dataset}: {len(meshes)} meshes, {len(queries)} query photos{' (mini)' if mini else ''}; backbone {backbone}; "
           f"sets to write {to_write}, skipped (file exists) {[s for s in sets if s not in to_write]}")
 
@@ -275,8 +282,21 @@ def run(dataset: str, cfg: dict, backbone: str | None = None, sets: list[str] | 
         left_out: list[dict] = []
         if feature_set == RENDERS:
             views = len(rig_from_config(cfg["render"]))
-            files = render_files(meshes, views)
+            files = render_files(meshes, views, paths.sized(paths.RENDERS_DIR, suffix))
             source = f"render views ({views} per mesh)"
+        elif suffix:  # another size: the rows of the main feature file, the images of that size
+            by_id = {row["query_id"]: row for row in queries}
+            main_ids = read_features(paths.features_file(backbone, dataset, feature_set)).ids
+            rows = [by_id[q] for q in main_ids if q in by_id]
+            if QUERY_SETS[dataset][feature_set] == SAM_IMAGES:
+                files = [sam_query_file(paths.MASKS_DIR, row, suffix) for row in rows]
+            else:
+                files = [catalog_query_file(row, suffix) for row in rows]
+            missing = [f for f in files if not f.exists()]
+            if missing:
+                raise FileNotFoundError(f"{len(missing)} query images of size {cfg['backbone']['image_size']} are missing, "
+                                        f"for example {missing[0]}; run 14_query_images_at_size.py first")
+            source = f"query images of size {cfg['backbone']['image_size']}, rows of the main feature file"
         else:
             rows = queries
             if QUERY_SETS[dataset][feature_set] == SAM_IMAGES:
@@ -301,7 +321,7 @@ def run(dataset: str, cfg: dict, backbone: str | None = None, sets: list[str] | 
         info = _file_info(extractor, cfg, dataset, feature_set, source, mini)
         table = FeatureTable(RENDERS if feature_set == RENDERS else QUERIES, parts,
                              {name: np.asarray(values) for name, values in labels.items()}, info)
-        target = write_features(table, paths.features_file(backbone, dataset, feature_set, root))
+        target = write_features(table, paths.features_file(store, dataset, feature_set, root))
         entries[feature_set] = {
             "file": str(target.relative_to(paths.ROOT)),
             "rows": table.rows,
@@ -317,7 +337,7 @@ def run(dataset: str, cfg: dict, backbone: str | None = None, sets: list[str] | 
         print(f"{feature_set}: {table.rows} rows, {len(files)} images, {len(left_out)} left out, "
               f"{entries[feature_set]['images_per_second']} images/s -> {entries[feature_set]['file']}")
 
-    report_path = report_file(backbone, dataset, root)
+    report_path = report_file(store, dataset, root)
     earlier = json.loads(report_path.read_text())["sets"] if report_path.exists() else {}
     report = {"dataset": dataset, "backbone": backbone, "mini": mini, "sets": {**earlier, **entries}}  # earlier sets stay
     report_path.parent.mkdir(parents=True, exist_ok=True)

@@ -34,3 +34,26 @@ rerank:
                                      # size (data.image_size) comes from its own folders
     photos: 500                      # random val photos per dataset (SAM query images); with the seed of dimcheck,
     seed: 1                          # the same photos, so that its 768-number row is repeated at 224
+  method2:                           # learned re-ranker (src/models/reranker.py, src/pipeline/train_reranker.py)
+    variant: residual_method1        # residual_method1: stage 1 + method1_weight x method 1 + r; stage1: stage 1 + r
+    method1_weight: 1.0              # the weight of method 1 (chosen in its cross-validation)
+    top: 10                          # meshes re-ordered per photo (the first 10 of stage 1, as method 1)
+    views: 5                         # views per mesh: the best ones by the stage-1 view score
+    tokens: 256                      # object patches per image at most (median 240 to 320 at 448 pixels; a random
+                                     # choice when there are more; a fixed-seed choice in evaluation). 256, not 384:
+                                     # 19.3 against 13.3 training photos per second (the pair scorer is the cost)
+    width: 256                       # the pair scorer: token width, attention heads, blocks, feed-forward width
+    heads: 4
+    blocks: 2
+    ffn: 1024
+    tau: 0.05                        # temperature of the loss over the 11 candidates of a training photo
+    epochs: 5
+    batch_photos: 4                  # training photos per step (each with 11 candidates x 5 views = 55 pairs)
+    eval_photos: 8                   # photos per evaluation pass
+    eval_epochs: all                 # all: measure the val photos after every epoch (the epoch curve); last: only at the end
+    lr: 3.0e-4
+    weight_decay: 1.0e-4
+    warmup_epochs: 1
+    loader_workers: 4
+    seed: 0
+    mini: {train_photos: 200, val_photos: 100}   # the mini run: 1 fold, 1 epoch, these photo counts

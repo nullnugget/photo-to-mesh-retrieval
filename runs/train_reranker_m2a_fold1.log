@@ -1,0 +1,132 @@
+run 2026-10-27_pix3d_abo_dinov3_vitb16_448_unseen_meshes_fold1_m2residual_method1_cvjointclean: 19096 training photos, val {'pix3d_queries_reference': 2025, 'pix3d_queries_sam': 2025, 'abo_queries_sam': 3326}, left out (correct mesh not in the first 50 / too few allowed) {'pix3d_queries_reference': 8, 'pix3d_queries_sam': 30, 'abo_queries_sam': 193}; 1,890,561 weights; 4774 steps per epoch, 5 epochs
+  epoch 1 step 0/4774 loss 0.3386 batch R@1 100.0 3.3 photos/s
+  epoch 1 step 200/4774 loss 0.8547 batch R@1 74.1 18.5 photos/s
+  epoch 1 step 400/4774 loss 0.8512 batch R@1 73.4 18.7 photos/s
+  epoch 1 step 600/4774 loss 0.8139 batch R@1 73.8 18.8 photos/s
+  epoch 1 step 800/4774 loss 0.8802 batch R@1 72.6 18.8 photos/s
+  epoch 1 step 1000/4774 loss 0.8436 batch R@1 74.9 18.8 photos/s
+  epoch 1 step 1200/4774 loss 0.8246 batch R@1 72.6 18.8 photos/s
+  epoch 1 step 1400/4774 loss 0.8051 batch R@1 73.5 18.8 photos/s
+  epoch 1 step 1600/4774 loss 0.8152 batch R@1 74.2 18.8 photos/s
+  epoch 1 step 1800/4774 loss 0.8447 batch R@1 71.6 18.8 photos/s
+  epoch 1 step 2000/4774 loss 0.8646 batch R@1 73.5 18.9 photos/s
+  epoch 1 step 2200/4774 loss 0.7811 batch R@1 73.9 18.9 photos/s
+  epoch 1 step 2400/4774 loss 0.8271 batch R@1 73.2 18.9 photos/s
+  epoch 1 step 2600/4774 loss 0.7614 batch R@1 76.4 18.9 photos/s
+  epoch 1 step 2800/4774 loss 0.8319 batch R@1 73.2 18.9 photos/s
+  epoch 1 step 3000/4774 loss 0.7886 batch R@1 74.2 18.9 photos/s
+  epoch 1 step 3200/4774 loss 0.9005 batch R@1 68.8 18.9 photos/s
+  epoch 1 step 3400/4774 loss 0.8555 batch R@1 72.8 18.9 photos/s
+  epoch 1 step 3600/4774 loss 0.8624 batch R@1 70.5 18.9 photos/s
+  epoch 1 step 3800/4774 loss 0.8222 batch R@1 71.6 18.9 photos/s
+  epoch 1 step 4000/4774 loss 0.8136 batch R@1 72.8 18.9 photos/s
+  epoch 1 step 4200/4774 loss 0.8617 batch R@1 72.6 18.9 photos/s
+  epoch 1 step 4400/4774 loss 0.8802 batch R@1 72.5 18.9 photos/s
+  epoch 1 step 4600/4774 loss 0.7710 batch R@1 76.1 18.9 photos/s
+epoch 1: loss 0.8304, 18.87 photos/s, peak 2585 MB, train 1011.7 s, eval 172.3 s; val R@1 (stage 1 / method 1 / method 2): pix3d_queries_reference 79.2 / 82.7 / 82.4; pix3d_queries_sam 73.4 / 78.1 / 77.2; abo_queries_sam 59.0 / 60.2 / 59.4
+  epoch 2 step 0/4774 loss 0.8355 batch R@1 75.0 5.1 photos/s
+  epoch 2 step 200/4774 loss 0.8565 batch R@1 73.6 18.6 photos/s
+  epoch 2 step 400/4774 loss 0.7031 batch R@1 77.2 18.8 photos/s
+  epoch 2 step 600/4774 loss 0.8251 batch R@1 73.5 18.8 photos/s
+  epoch 2 step 800/4774 loss 0.7636 batch R@1 74.0 18.8 photos/s
+  epoch 2 step 1000/4774 loss 0.7638 batch R@1 74.1 18.8 photos/s
+  epoch 2 step 1200/4774 loss 0.7598 batch R@1 75.2 18.8 photos/s
+  epoch 2 step 1400/4774 loss 0.6742 batch R@1 78.0 18.8 photos/s
+  epoch 2 step 1600/4774 loss 0.8610 batch R@1 72.5 18.9 photos/s
+  epoch 2 step 1800/4774 loss 0.8314 batch R@1 73.6 18.9 photos/s
+  epoch 2 step 2000/4774 loss 0.7620 batch R@1 74.1 18.9 photos/s
+  epoch 2 step 2200/4774 loss 0.8006 batch R@1 75.4 18.9 photos/s
+  epoch 2 step 2400/4774 loss 0.7996 batch R@1 72.2 18.9 photos/s
+  epoch 2 step 2600/4774 loss 0.7587 batch R@1 72.9 18.9 photos/s
+  epoch 2 step 2800/4774 loss 0.7487 batch R@1 76.4 18.9 photos/s
+  epoch 2 step 3000/4774 loss 0.7954 batch R@1 72.4 18.9 photos/s
+  epoch 2 step 3200/4774 loss 0.7093 batch R@1 76.8 18.9 photos/s
+  epoch 2 step 3400/4774 loss 0.7335 batch R@1 76.4 18.9 photos/s
+  epoch 2 step 3600/4774 loss 0.7182 batch R@1 77.6 18.9 photos/s
+  epoch 2 step 3800/4774 loss 0.7283 batch R@1 75.1 18.9 photos/s
+  epoch 2 step 4000/4774 loss 0.8107 batch R@1 73.4 18.9 photos/s
+  epoch 2 step 4200/4774 loss 0.7413 batch R@1 75.8 18.9 photos/s
+  epoch 2 step 4400/4774 loss 0.7673 batch R@1 74.1 18.9 photos/s
+  epoch 2 step 4600/4774 loss 0.7442 batch R@1 76.9 18.9 photos/s
+epoch 2: loss 0.7643, 18.87 photos/s, peak 2585 MB, train 1011.8 s, eval 171.8 s; val R@1 (stage 1 / method 1 / method 2): pix3d_queries_reference 79.2 / 82.7 / 84.5; pix3d_queries_sam 73.4 / 78.1 / 80.0; abo_queries_sam 59.0 / 60.2 / 60.2
+  epoch 3 step 0/4774 loss 0.8637 batch R@1 50.0 6.9 photos/s
+  epoch 3 step 200/4774 loss 0.7006 batch R@1 76.1 18.7 photos/s
+  epoch 3 step 400/4774 loss 0.6826 batch R@1 77.5 18.8 photos/s
+  epoch 3 step 600/4774 loss 0.6775 batch R@1 76.4 18.8 photos/s
+  epoch 3 step 800/4774 loss 0.6344 batch R@1 78.2 18.8 photos/s
+  epoch 3 step 1000/4774 loss 0.7683 batch R@1 74.0 18.8 photos/s
+  epoch 3 step 1200/4774 loss 0.6635 batch R@1 76.2 18.9 photos/s
+  epoch 3 step 1400/4774 loss 0.6294 batch R@1 78.8 18.9 photos/s
+  epoch 3 step 1600/4774 loss 0.6261 batch R@1 79.5 18.9 photos/s
+  epoch 3 step 1800/4774 loss 0.6581 batch R@1 77.9 18.9 photos/s
+  epoch 3 step 2000/4774 loss 0.7128 batch R@1 76.6 18.9 photos/s
+  epoch 3 step 2200/4774 loss 0.6389 batch R@1 78.2 18.9 photos/s
+  epoch 3 step 2400/4774 loss 0.6334 batch R@1 77.5 18.9 photos/s
+  epoch 3 step 2600/4774 loss 0.6423 batch R@1 78.2 18.9 photos/s
+  epoch 3 step 2800/4774 loss 0.7014 batch R@1 75.5 18.9 photos/s
+  epoch 3 step 3000/4774 loss 0.6374 batch R@1 78.4 18.9 photos/s
+  epoch 3 step 3200/4774 loss 0.6348 batch R@1 76.8 18.9 photos/s
+  epoch 3 step 3400/4774 loss 0.6648 batch R@1 74.1 18.9 photos/s
+  epoch 3 step 3600/4774 loss 0.6078 batch R@1 78.6 18.9 photos/s
+  epoch 3 step 3800/4774 loss 0.6151 batch R@1 78.2 18.9 photos/s
+  epoch 3 step 4000/4774 loss 0.6214 batch R@1 78.8 18.9 photos/s
+  epoch 3 step 4200/4774 loss 0.6168 batch R@1 79.2 18.9 photos/s
+  epoch 3 step 4400/4774 loss 0.5696 batch R@1 81.6 18.9 photos/s
+  epoch 3 step 4600/4774 loss 0.6376 batch R@1 77.9 18.9 photos/s
+epoch 3: loss 0.6483, 18.87 photos/s, peak 2585 MB, train 1011.8 s, eval 172.1 s; val R@1 (stage 1 / method 1 / method 2): pix3d_queries_reference 79.2 / 82.7 / 83.1; pix3d_queries_sam 73.4 / 78.1 / 78.8; abo_queries_sam 59.0 / 60.2 / 60.5
+  epoch 4 step 0/4774 loss 0.3483 batch R@1 100.0 7.2 photos/s
+  epoch 4 step 200/4774 loss 0.5114 batch R@1 82.9 18.7 photos/s
+  epoch 4 step 400/4774 loss 0.5515 batch R@1 82.0 18.8 photos/s
+  epoch 4 step 600/4774 loss 0.5366 batch R@1 80.4 18.8 photos/s
+  epoch 4 step 800/4774 loss 0.5469 batch R@1 79.1 18.8 photos/s
+  epoch 4 step 1000/4774 loss 0.5572 batch R@1 79.2 18.8 photos/s
+  epoch 4 step 1200/4774 loss 0.5683 batch R@1 80.0 18.9 photos/s
+  epoch 4 step 1400/4774 loss 0.5341 batch R@1 80.8 18.9 photos/s
+  epoch 4 step 1600/4774 loss 0.5583 batch R@1 81.4 18.9 photos/s
+  epoch 4 step 1800/4774 loss 0.5572 batch R@1 80.2 18.9 photos/s
+  epoch 4 step 2000/4774 loss 0.5146 batch R@1 83.6 18.9 photos/s
+  epoch 4 step 2200/4774 loss 0.4536 batch R@1 83.1 18.9 photos/s
+  epoch 4 step 2400/4774 loss 0.5096 batch R@1 81.9 18.9 photos/s
+  epoch 4 step 2600/4774 loss 0.5351 batch R@1 81.4 18.9 photos/s
+  epoch 4 step 2800/4774 loss 0.5075 batch R@1 80.8 18.9 photos/s
+  epoch 4 step 3000/4774 loss 0.5320 batch R@1 81.6 18.9 photos/s
+  epoch 4 step 3200/4774 loss 0.5011 batch R@1 81.6 18.9 photos/s
+  epoch 4 step 3400/4774 loss 0.4633 batch R@1 82.6 18.9 photos/s
+  epoch 4 step 3600/4774 loss 0.5215 batch R@1 80.5 18.9 photos/s
+  epoch 4 step 3800/4774 loss 0.5168 batch R@1 82.9 18.9 photos/s
+  epoch 4 step 4000/4774 loss 0.5218 batch R@1 80.9 18.9 photos/s
+  epoch 4 step 4200/4774 loss 0.4873 batch R@1 82.8 18.9 photos/s
+  epoch 4 step 4400/4774 loss 0.5356 batch R@1 80.2 18.9 photos/s
+  epoch 4 step 4600/4774 loss 0.5008 batch R@1 81.4 18.9 photos/s
+epoch 4: loss 0.5215, 18.88 photos/s, peak 2585 MB, train 1011.6 s, eval 172.2 s; val R@1 (stage 1 / method 1 / method 2): pix3d_queries_reference 79.2 / 82.7 / 83.7; pix3d_queries_sam 73.4 / 78.1 / 78.9; abo_queries_sam 59.0 / 60.2 / 60.8
+  epoch 5 step 0/4774 loss 0.0080 batch R@1 100.0 5.8 photos/s
+  epoch 5 step 200/4774 loss 0.4380 batch R@1 84.1 18.7 photos/s
+  epoch 5 step 400/4774 loss 0.3867 batch R@1 85.5 18.8 photos/s
+  epoch 5 step 600/4774 loss 0.4332 batch R@1 84.1 18.8 photos/s
+  epoch 5 step 800/4774 loss 0.4099 batch R@1 85.4 18.8 photos/s
+  epoch 5 step 1000/4774 loss 0.4271 batch R@1 83.2 18.8 photos/s
+  epoch 5 step 1200/4774 loss 0.4225 batch R@1 84.4 18.8 photos/s
+  epoch 5 step 1400/4774 loss 0.3854 batch R@1 85.9 18.8 photos/s
+  epoch 5 step 1600/4774 loss 0.4021 batch R@1 86.9 18.8 photos/s
+  epoch 5 step 1800/4774 loss 0.3886 batch R@1 85.6 18.9 photos/s
+  epoch 5 step 2000/4774 loss 0.4243 batch R@1 84.8 18.9 photos/s
+  epoch 5 step 2200/4774 loss 0.4386 batch R@1 84.1 18.9 photos/s
+  epoch 5 step 2400/4774 loss 0.3747 batch R@1 86.9 18.9 photos/s
+  epoch 5 step 2600/4774 loss 0.4696 batch R@1 84.1 18.9 photos/s
+  epoch 5 step 2800/4774 loss 0.4157 batch R@1 84.9 18.9 photos/s
+  epoch 5 step 3000/4774 loss 0.4231 batch R@1 85.9 18.9 photos/s
+  epoch 5 step 3200/4774 loss 0.4447 batch R@1 84.0 18.9 photos/s
+  epoch 5 step 3400/4774 loss 0.3796 batch R@1 86.9 18.9 photos/s
+  epoch 5 step 3600/4774 loss 0.3961 batch R@1 84.8 18.9 photos/s
+  epoch 5 step 3800/4774 loss 0.4166 batch R@1 85.4 18.9 photos/s
+  epoch 5 step 4000/4774 loss 0.4409 batch R@1 85.1 18.9 photos/s
+  epoch 5 step 4200/4774 loss 0.4292 batch R@1 84.6 18.9 photos/s
+  epoch 5 step 4400/4774 loss 0.3929 batch R@1 84.4 18.9 photos/s
+  epoch 5 step 4600/4774 loss 0.3613 batch R@1 86.1 18.9 photos/s
+epoch 5: loss 0.4122, 18.87 photos/s, peak 2585 MB, train 1011.9 s, eval 172.0 s; val R@1 (stage 1 / method 1 / method 2): pix3d_queries_reference 79.2 / 82.7 / 82.4; pix3d_queries_sam 73.4 / 78.1 / 77.8; abo_queries_sam 59.0 / 60.2 / 60.9
+
+method 2 (residual_method1), pooled over folds [1]:
+  pix3d_queries_reference  photos   2025  stage 1  79.2  method 1  82.7  method 2  82.4  (against method 1 -0.3, -3.7 to +3.3)
+  pix3d_queries_sam        photos   2025  stage 1  73.4  method 1  78.1  method 2  77.8  (against method 1 -0.3, -3.5 to +4.3)
+  abo_queries_sam          photos   3326  stage 1  59.0  method 1  60.2  method 2  60.9  (against method 1 +0.7, -1.8 to +3.4)
+-> /home/ami/workspace/xdim-cbir/data/derived/rerank/cvjointclean/method2_residual_method1_448_report.json

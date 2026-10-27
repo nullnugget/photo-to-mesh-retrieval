@@ -1,0 +1,8 @@
+pix3d fixed: 500 photos; measuring 150
+pix3d broken: 257 photos; measuring 150
+abo fixed: 674 photos; measuring 150
+abo broken: 654 photos; measuring 150
+pix3d fixed  n 150  same category 89 %  distance median 0.070  < 0.015: 0 %  < 0.03: 4 %  >= 0.05: 67 %
+pix3d broken n 150  same category 89 %  distance median 0.069  < 0.015: 0 %  < 0.03: 1 %  >= 0.05: 69 %
+abo   fixed  n 150  same category 83 %  distance median 0.048  < 0.015: 2 %  < 0.03: 25 %  >= 0.05: 46 %
+abo   broken n 150  same category 86 %  distance median 0.051  < 0.015: 1 %  < 0.03: 27 %  >= 0.05: 52 %

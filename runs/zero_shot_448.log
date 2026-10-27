@@ -1,0 +1,10 @@
+queries_reference  cls              combined  photos   6688  R@1  71.9 (70.8 to 72.9; meshes 65.9 to 77.5)  R@5  93.5  R@10  98.0  Cat@1  96.7  macro R@1  72.9
+queries_sam        cls              combined  photos   6688  R@1  62.6 (61.5 to 63.8; meshes 57.0 to 68.1)  R@5  89.7  R@10  95.3  Cat@1  94.1  macro R@1  64.6
+run -> runs/2026-10-27_pix3d_dinov3_vitb16_zero_shot_test_free_size448check; 2 rows -> runs/registry.csv
+queries_reference  cls              combined  photos   6688  R@1  69.2 (68.1 to 70.4; meshes 63.2 to 75.0)  R@5  92.7  R@10  97.7  Cat@1  96.3  macro R@1  71.5
+queries_sam        cls              combined  photos   6688  R@1  61.5 (60.3 to 62.7; meshes 55.3 to 67.5)  R@5  89.0  R@10  95.0  Cat@1  93.6  macro R@1  66.2
+run -> runs/2026-10-27_pix3d_dinov3_vitb16_448_zero_shot_test_free_size448check; 2 rows -> runs/registry.csv
+queries_sam        cls              combined  photos  12063  R@1  47.2 (46.3 to 48.1; meshes 45.2 to 49.3)  R@5  77.2  R@10  85.6  Cat@1  90.7  macro R@1  53.0
+run -> runs/2026-10-27_abo_dinov3_vitb16_zero_shot_test_free_size448check; 1 rows -> runs/registry.csv
+queries_sam        cls              combined  photos  12063  R@1  47.3 (46.3 to 48.1; meshes 45.1 to 49.4)  R@5  76.9  R@10  84.9  Cat@1  90.9  macro R@1  52.8
+run -> runs/2026-10-27_abo_dinov3_vitb16_448_zero_shot_test_free_size448check; 1 rows -> runs/registry.csv
